@@ -42,11 +42,13 @@ curve di animazione e tweening.
 ### Fase 0 — Analisi (sessione 1) — FATTO
 Inventario, architettura, formati, layout CD documentati.
 
-### Fase 1 — Il disco si apre
-Decodifica del container `.jcd`, mappatura data type -> traccia -> settore,
-verifica che gli offset di `DATA.INC` valgano anche sul disco retail.
-Tool: `tools/jcd/` (lettore container + dump tracce).
-**Criterio di riuscita:** `BO_CINEPAK_TITLES` punta a un header `FILM` valido.
+### Fase 1 — Il disco si apre — FATTO
+Container `.jcd` decodificato, dati de-swappati, layout retail mappato.
+Tool: [tools/jcd/jcdinfo.py](../tools/jcd/jcdinfo.py). Dettagli in
+[docs/06-formato-jcd.md](06-formato-jcd.md).
+**Esito:** il punto zero e' confermato al byte (`BO_CINEPAK_BUZZ = 0` cade
+sull'header `FILM` del primo filmato), ma le tabelle di offset di luglio 1995
+**non** valgono per il resto del disco: vanno rideterminate.
 
 ### Fase 2 — Gli asset escono
 Estrattori per cinepak, scene (fondale + Z), modelli, animazioni, set,
@@ -111,7 +113,7 @@ Highlander/    (gitignore) materiale originale dell'utente
 
 | Rischio | Mitigazione |
 |---|---|
-| Gli offset di luglio '95 non valgono sul disco retail | Fase 1 li verifica subito; in caso negativo si ricostruisce la mappa per scansione delle firme (header `FILM`, header modelli) |
+| ~~Gli offset di luglio '95 non valgono sul disco retail~~ **confermato in fase 1** | Si ricostruisce la mappa per scansione delle firme. Gia' fatto per i 36 Cinepak; da fare per gli altri data type |
 | Formato scena/Z-buffer non documentato nel sorgente | I 110 blocchi per scena sono un vincolo forte; validazione visiva su fondali riconoscibili |
 | Il sorgente e' un WIP, non il codice della release | Va trattato come **specifica di progetto**, non come oracolo. Dove diverge dal disco, vince il disco |
 | Mancano i tool di conversione asset (Map Tool, SKELSKIN) | Non servono: leggiamo i dati gia' convertiti dal CD. Servirebbero solo per rigenerare contenuti nuovi |

@@ -3,9 +3,8 @@
 Reimplementazione nativa per PC di **Highlander: The Last of the MacLeods**
 (Lore Design Ltd. / Atari Corp., Jaguar CD, 1995).
 
-> **Stato: sessione 1 — analisi.** Nessun codice del motore ancora scritto.
-> Questo repo contiene per ora solo la documentazione tecnica ricavata dallo
-> studio del gioco.
+> **Stato: fase 1 completata.** Il container `.jcd` e' decodificato e il
+> layout del disco retail e' mappato. Motore non ancora iniziato.
 
 ---
 
@@ -51,6 +50,7 @@ filmati **Cinepak** e parlato in **Red Book audio**.
 | [docs/03-formati-dati.md](docs/03-formati-dati.md) | Strutture dati e formati di file |
 | [docs/04-cd-e-asset.md](docs/04-cd-e-asset.md) | Layout del CD, come il gioco indirizza i dati, piano di estrazione |
 | [docs/05-roadmap.md](docs/05-roadmap.md) | Strategia di porting e roadmap per fasi |
+| [docs/06-formato-jcd.md](docs/06-formato-jcd.md) | Formato del container `.jcd` e layout del disco retail |
 | [docs/sessions/](docs/sessions/) | Diario di lavoro, una nota per sessione |
 
 ## Crediti dell'originale
