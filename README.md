@@ -1,61 +1,69 @@
 # pc-highlander
 
-Reimplementazione nativa per PC di **Highlander: The Last of the MacLeods**
+A native PC reimplementation of **Highlander: The Last of the MacLeods**
 (Lore Design Ltd. / Atari Corp., Jaguar CD, 1995).
 
-> **Stato: fase 1 completata.** Il container `.jcd` e' decodificato e il
-> layout del disco retail e' mappato. Motore non ancora iniziato.
+> **Status: phase 1 complete.** The `.jcd` container format is decoded and the
+> retail disc layout is mapped. Engine work has not started yet.
 
 ---
 
 ## BYOA — Bring Your Own Assets
 
-Questo repository **non contiene**, e non conterrà mai:
+This repository does **not** contain, and never will:
 
-* il codice sorgente originale del 1995 (© Lore Design Ltd. / Atari Corp.);
-* immagini disco (`.jcd`, `.cdi`, `.bin`/`.cue`) del gioco;
-* asset estratti dal disco (modelli, animazioni, fondali, FMV, audio, script).
+* the original 1995 source code (© Lore Design Ltd. / Atari Corp.);
+* disc images (`.jcd`, `.cdi`, `.bin`/`.cue`) of the game;
+* assets extracted from the disc (models, animations, backdrops, FMV, audio, scripts).
 
-Contiene soltanto:
+It contains only:
 
-* **documentazione dei formati di dato** (fatti, non espressione creativa);
-* **codice nostro** — motore riscritto da zero e tool di estrazione;
-* nessun byte copiato dal materiale originale.
+* **documentation of data formats** — facts, not creative expression;
+* **our own code** — a from-scratch engine and extraction tools;
+* not a single byte copied from the original material.
 
-Per giocare servirà una copia del disco Jaguar CD di cui si è legittimi
-proprietari. Il layout previsto in locale (interamente in `.gitignore`):
+Playing will require a copy of the Jaguar CD disc that you legitimately own.
+The expected local layout (all of it in `.gitignore`):
 
 ```
 PC-Highlander/
-  Highlander/          <- dump del sorgente 1995 + immagini disco (locale, mai committato)
-  assets/              <- output dei tool di estrazione (locale, mai committato)
-  docs/  src/  tools/  <- questo repo
+  Highlander/          <- 1995 source dump + disc images (local, never committed)
+  assets/              <- output of the extraction tools (local, never committed)
+  docs/  src/  tools/  <- this repository
 ```
 
 ---
 
-## Il gioco in una riga
+## The game in one line
 
-Avventura/action 3D in terza persona con **fondali pre-renderizzati a camera
-fissa** (stile *Alone in the Dark* / *Resident Evil*), personaggi poligonali
-in tempo reale composti sul fondale tramite **Z-buffer pre-calcolato**,
-filmati **Cinepak** e parlato in **Red Book audio**.
+A third-person 3D action/adventure built on **pre-rendered fixed-camera
+backdrops** (*Alone in the Dark* / *Resident Evil* style), with real-time
+polygonal characters composited into the scene using a **pre-computed
+Z-buffer**, plus **Cinepak** full-motion video and **Red Book** CD audio.
 
-## Indice della documentazione
+## Documentation
 
-| Doc | Contenuto |
+| Doc | Contents |
 |---|---|
-| [docs/01-inventario.md](docs/01-inventario.md) | Cosa c'è nel dump del sorgente, cosa manca, com'è messa la ISO |
-| [docs/02-architettura.md](docs/02-architettura.md) | Architettura del motore: 68000 + GPU + DSP, game loop, memoria |
-| [docs/03-formati-dati.md](docs/03-formati-dati.md) | Strutture dati e formati di file |
-| [docs/04-cd-e-asset.md](docs/04-cd-e-asset.md) | Layout del CD, come il gioco indirizza i dati, piano di estrazione |
-| [docs/05-roadmap.md](docs/05-roadmap.md) | Strategia di porting e roadmap per fasi |
-| [docs/06-formato-jcd.md](docs/06-formato-jcd.md) | Formato del container `.jcd` e layout del disco retail |
-| [docs/sessions/](docs/sessions/) | Diario di lavoro, una nota per sessione |
+| [docs/01-inventory.md](docs/01-inventory.md) | What is in the source dump, what is missing, the state of the disc images |
+| [docs/02-architecture.md](docs/02-architecture.md) | Engine architecture: 68000 + GPU + DSP, game loop, memory map |
+| [docs/03-data-formats.md](docs/03-data-formats.md) | Data structures and file formats |
+| [docs/04-cd-and-assets.md](docs/04-cd-and-assets.md) | How the game addresses the CD, and the asset extraction plan |
+| [docs/05-roadmap.md](docs/05-roadmap.md) | Porting strategy and phased roadmap |
+| [docs/06-jcd-format.md](docs/06-jcd-format.md) | The `.jcd` container format and the retail disc layout |
+| [docs/sessions/](docs/sessions/) | Work log, one note per session |
 
-## Crediti dell'originale
+## Tools
 
-Lore Design Ltd., 1994-95 — Andrew M. Harris (motore 3D, CD, eventi),
-Robert C. Dibley (animazione, combattimento, script VM, NVRAM),
-Matthew Jesson (tool di mappa/asset, script di gioco), Jakes Mo (audio, logiche,
-Cinepak), Chris Lowe (tool modelli). Pubblicato da Atari Corp.
+```
+python tools/jcd/jcdinfo.py <image.jcd>                 list tracks
+python tools/jcd/jcdinfo.py <image.jcd> --extract DIR   extract de-swapped tracks
+python tools/jcd/jcdinfo.py <image.jcd> --hex 7 0 256   hex dump a track
+```
+
+## Credits for the original
+
+Lore Design Ltd., 1994-95 — Andrew M. Harris (3D engine, CD, events),
+Robert C. Dibley (animation, combat, script VM, NVRAM),
+Matthew Jesson (map/asset tools, game scripts), Jakes Mo (audio, logic,
+Cinepak), Chris Lowe (model tools). Published by Atari Corp.

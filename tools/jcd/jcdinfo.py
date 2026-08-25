@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-jcdinfo — lettore del container .jcd (immagini Jaguar CD).
+jcdinfo - reader for the .jcd container (Jaguar CD disc images).
 
-Uso:
-    python jcdinfo.py <immagine.jcd>                 elenca le tracce
-    python jcdinfo.py <immagine.jcd> --extract DIR   estrae le tracce deswappate
-    python jcdinfo.py <immagine.jcd> --hex N OFF LEN dump esadecimale della traccia N
+Usage:
+    python jcdinfo.py <image.jcd>                 list the tracks
+    python jcdinfo.py <image.jcd> --extract DIR   extract de-swapped tracks
+    python jcdinfo.py <image.jcd> --hex N OFF LEN hex dump of track N
 
-Il formato e' documentato in docs/06-formato-jcd.md.
-Nessun dato del gioco e' incluso in questo repository: serve una copia
-dell'immagine di cui si e' legittimi proprietari.
+The format is documented in docs/06-jcd-format.md.
+No game data is included in this repository: you need a copy of a disc
+image that you legitimately own.
 """
 
 import argparse
@@ -17,15 +17,15 @@ import os
 import struct
 import sys
 
-SECTOR = 2352          # dimensione di blocco dichiarata dalla TOC
-OFFSET_UNIT = 512      # l'offset di traccia nell'header e' in unita' da 512 byte
-LEADIN = b"ATRI"       # tag ripetuto in testa a ogni traccia dati
+SECTOR = 2352          # block size declared by the TOC
+OFFSET_UNIT = 512      # track offsets in the header are in units of 512 bytes
+LEADIN = b"ATRI"       # tag repeated at the head of every data track
 TRACK_HDR = b"ATARI APPROVED DATA HEADER ATRI"
-HDR_LEN = 96           # header di traccia, dopo il lead-in
+HDR_LEN = 96           # track header, after the lead-in
 
 
 def swap32(buf: bytes) -> bytes:
-    """I dati delle tracce sono memorizzati con ogni long a byte invertiti."""
+    """Track data is stored with every long byte-reversed."""
     n = len(buf) & ~3
     out = bytearray(buf)
     out[:n] = b"".join(buf[i:i + 4][::-1] for i in range(0, n, 4))
@@ -43,16 +43,16 @@ class Track:
         self.flag = rec[4]
         self.blocks = msf_to_blocks(rec[5:8])
         self.file_off = struct.unpack(">I", rec[8:12])[0] * OFFSET_UNIT
-        self.kind = None       # tag a 4 caratteri, es. PICT / 1111
-        self.type_code = None  # byte di tipo, 0x20 + indice traccia dati
-        self.payload = None    # offset del primo byte utile
+        self.kind = None       # 4-character tag, e.g. PICT / 1111
+        self.type_code = None  # type byte, 0x20 + data track index
+        self.payload = None    # offset of the first useful byte
 
     @property
     def is_audio(self) -> bool:
         return self.flag == 0
 
     def probe(self, fh):
-        """Legge il lead-in e l'header per capire il tipo di traccia dati."""
+        """Read the lead-in and header to determine the data track type."""
         if self.is_audio:
             self.payload = self.file_off
             return
@@ -75,7 +75,7 @@ def read_toc(fh):
     fh.seek(0)
     head = fh.read(12)
     if head[:4] != b"JCD\0":
-        raise SystemExit("non e' un container .jcd (magic mancante)")
+        raise SystemExit("not a .jcd container (magic missing)")
     ntracks = head[7]
     recs = fh.read(12 * ntracks)
     tracks = [Track(recs[i * 12:(i + 1) * 12]) for i in range(ntracks)]
@@ -88,10 +88,10 @@ def cmd_list(path):
     with open(path, "rb") as fh:
         head, tracks = read_toc(fh)
         size = os.path.getsize(path)
-        print(f"{path}  ({size} byte)")
-        print(f"header: {head[:4]!r} campi {head[4:12].hex(' ')}  tracce={head[7]}")
+        print(f"{path}  ({size} bytes)")
+        print(f"header: {head[:4]!r} fields {head[4:12].hex(' ')}  tracks={head[7]}")
         print()
-        print(f"{'tr':>3} {'tipo':>6} {'cod':>5} {'blocchi':>8} {'MB':>7} "
+        print(f"{'tr':>3} {'type':>6} {'code':>5} {'blocks':>8} {'MB':>7} "
               f"{'start MSF':>10} {'file offset':>12} {'payload':>12}")
         for t in tracks:
             kind = "AUDIO" if t.is_audio else (t.kind or "?")
@@ -102,8 +102,8 @@ def cmd_list(path):
                   f"{t.blocks * SECTOR / 1048576:7.1f} {mm:02d}:{ss:02d}:{ff:02d}   "
                   f"{t.file_off:12d} {t.payload:12d}")
         print()
-        print("Il 'cod' vale 0x20 + indice della traccia dati: e' il data type")
-        print("usato dal gioco come offset di traccia (vedi GetTrack in CDCONTRO.GAS).")
+        print("The 'code' column is 0x20 + data track index: it is the data type")
+        print("the game uses as a track offset (see GetTrack in CDCONTRO.GAS).")
 
 
 def cmd_extract(path, outdir):
@@ -122,7 +122,7 @@ def cmd_extract(path, outdir):
                         break
                     out.write(chunk if t.is_audio else swap32(chunk))
                     todo -= len(chunk)
-            print(f"  {name}  ({os.path.getsize(name)} byte)")
+            print(f"  {name}  ({os.path.getsize(name)} bytes)")
 
 
 def cmd_hex(path, tno, off, length):
@@ -140,7 +140,7 @@ def cmd_hex(path, tno, off, length):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="lettore del container Jaguar CD .jcd")
+    ap = argparse.ArgumentParser(description="Jaguar CD .jcd container reader")
     ap.add_argument("image")
     ap.add_argument("--extract", metavar="DIR")
     ap.add_argument("--hex", nargs=3, metavar=("TRACK", "OFF", "LEN"))

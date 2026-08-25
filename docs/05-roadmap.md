@@ -1,120 +1,121 @@
-# 05 — Strategia di porting e roadmap
+# 05 — Porting strategy and roadmap
 
-## 5.1 Decisioni prese (sessione 1)
+## 5.1 Decisions taken
 
-| Decisione | Scelta |
+| Decision | Choice |
 |---|---|
-| Linguaggio | **C99** |
-| Piattaforma | **SDL3** (video, audio, input), build con **CMake** |
-| Rendering | **rasterizer software**, framebuffer 320x200 a 16 bit + Z-buffer, upscale via texture SDL |
-| Fedelta' | **prima fedele, poi opzioni** — il gioco originale e' il riferimento; migliorie solo come flag disattivabili |
-| Repo | **BYOA stretto** — nessun sorgente 1995, nessuna ISO, nessun asset |
+| Language | **C99** |
+| Platform | **SDL3** (video, audio, input), built with **CMake** |
+| Rendering | **software rasteriser**, 320x200 16-bit framebuffer plus Z-buffer, upscaled through an SDL texture |
+| Fidelity | **faithful first, options later** — the original game is the reference; improvements ship as toggles |
+| Repository | **strict BYOA** — no 1995 source, no disc image, no assets |
 
-### Perche' rasterizer software
-Il motore originale disegna facce **flat-shaded** con test Z contro uno Z-buffer
-caricato dal disco. Riprodurlo in software significa avere il *ground truth*
-pixel per pixel: se un frame non combacia con l'originale in emulatore, il bug
-e' nostro. Il costo computazionale e' irrilevante — parliamo di poche centinaia
-di poligoni per frame su 64.000 pixel. L'accelerazione GPU resta un'opzione
-futura, sopra un motore gia' corretto.
+### Why a software rasteriser
+The original engine draws **flat-shaded** facets, depth-tested against a
+Z-buffer loaded from disc. Reproducing that in software gives us pixel-exact
+*ground truth*: if a frame does not match the original running in an emulator,
+the bug is ours. The compute cost is irrelevant — a few hundred polygons per
+frame over 64,000 pixels. GPU acceleration stays available later, on top of an
+engine that is already correct.
 
-## 5.2 Cosa NON va portato
+## 5.2 What should NOT be ported
 
-Grossa parte del sorgente originale esiste solo per aggirare i limiti
-dell'hardware. Va letta per capire *cosa* fa, non trascritta:
+A large part of the original source exists purely to work around hardware
+limits. Read it to understand *what* it does, do not transcribe it:
 
-* il kernel di overlay GPU e tutta la coreografia col blitter (§2.2);
-* l'allocatore a chunk da 448 byte e la sua garbage collection;
-* la coda CD a stati con priority-wait e la commutazione dati/Red Book;
-* il triplo buffer di scena con precaricamento — su PC gli asset stanno tutti
-  in RAM;
-* i disassemblati del CD BIOS e della libreria Cinepak (`CDINIT*.GAS`,
-  `CINELIST.GAS`);
-* il decoder Cinepak scritto a mano: contenitore FILM piu' codec standard.
+* the GPU overlay kernel and the whole blitter choreography (see
+  [02-architecture.md](02-architecture.md) §2.2);
+* the 448-byte chunk allocator and its garbage collection;
+* the state-machine CD queue with priority waits and the data / Red Book mode
+  switching;
+* the triple scene buffer with prefetch — on PC every asset fits in RAM;
+* the CD BIOS and Cinepak library disassemblies (`CDINIT*.GAS`, `CINELIST.GAS`);
+* the hand-written Cinepak decoder: FILM container plus a standard codec.
 
-Restano invece **da riprodurre fedelmente**: aritmetica intera e formati in
-virgola fissa (s15.0 / s1.14 / 8.8), ordine delle operazioni nel game loop,
-semantica esatta della VM script, algoritmi di collisione e combattimento,
-curve di animazione e tweening.
+What **must** be reproduced faithfully: integer arithmetic and fixed-point
+formats (s15.0 / s1.14 / 8.8), the ordering of operations in the game loop, the
+exact semantics of the script VM, the collision and combat algorithms, and the
+animation and tweening curves.
 
-## 5.3 Roadmap per fasi
+## 5.3 Phased roadmap
 
-### Fase 0 — Analisi (sessione 1) — FATTO
-Inventario, architettura, formati, layout CD documentati.
+### Phase 0 — Analysis — DONE
+Inventory, architecture, formats and CD addressing documented.
 
-### Fase 1 — Il disco si apre — FATTO
-Container `.jcd` decodificato, dati de-swappati, layout retail mappato.
-Tool: [tools/jcd/jcdinfo.py](../tools/jcd/jcdinfo.py). Dettagli in
-[docs/06-formato-jcd.md](06-formato-jcd.md).
-**Esito:** il punto zero e' confermato al byte (`BO_CINEPAK_BUZZ = 0` cade
-sull'header `FILM` del primo filmato), ma le tabelle di offset di luglio 1995
-**non** valgono per il resto del disco: vanno rideterminate.
+### Phase 1 — Open the disc — DONE
+`.jcd` container decoded, data de-swapped, retail layout mapped.
+Tool: [tools/jcd/jcdinfo.py](../tools/jcd/jcdinfo.py). Details in
+[06-jcd-format.md](06-jcd-format.md).
+**Outcome:** the zero point is confirmed to the byte (`BO_CINEPAK_BUZZ = 0`
+lands on the first film's `FILM` header), but the July 1995 offset tables do
+**not** hold for the rest of the disc and must be rediscovered.
 
-### Fase 2 — Gli asset escono
-Estrattori per cinepak, scene (fondale + Z), modelli, animazioni, set,
-character sheet, suoni, Red Book. Output in `assets/` con manifest JSON
-nominato secondo `CDLINK.INC` / `DATA.INC` / `WORLD.INC`.
-**Criteri di riuscita:** i fondali si aprono come PNG; il modello della
-bottiglia estratto dal CD coincide con `MERLOT79.INC` del sorgente.
+### Phase 2 — Get the assets out
+Extractors for scenes (backdrop plus Z), cinepaks, models, animations, sets,
+character sheets and sounds. Output into `assets/` with a JSON manifest named
+from `CDLINK.INC` / `DATA.INC` / `WORLD.INC`.
+**Success criteria:** backdrops open as PNG; the wine-bottle model extracted
+from the CD matches `MERLOT79.INC` in the source.
 
-### Fase 3 — Si vede qualcosa
-Finestra SDL3, framebuffer 320x200, conversione CRY/RGB16 -> RGB888, un
-visualizzatore che mostra un fondale con il suo Z-buffer e ci fa ruotare dentro
-un modello estratto, illuminato e Z-testato.
-**Criterio di riuscita:** il modello passa correttamente dietro agli elementi
-del fondale.
+### Phase 3 — Something on screen
+SDL3 window, 320x200 framebuffer, CRY/RGB16 to RGB888 conversion, and a viewer
+that shows a backdrop with its Z-buffer and lets us spin an extracted model
+inside it, lit and depth-tested.
+**Success criterion:** the model passes correctly behind scenery.
 
-### Fase 4 — Il mondo esiste
-Porting delle strutture dati (WST, ACT, CIT, DDA, character sheet), del
-caricamento dei set, della mesh di collisione e della ricerca del triangolo
-(`FINDTRI`), del movimento del personaggio con altezza del terreno e gestione
-scale (`SMOOTH.TXT`). Camera fissa che cambia attraversando le linee-evento.
-**Criterio di riuscita:** si cammina in `DUN1` e la camera cambia dove deve.
+### Phase 4 — The world exists
+Port the data structures (WST, ACT, CIT, DDA, character sheets), set loading,
+the collision mesh and triangle search (`FINDTRI`), and character movement with
+ground height and stair handling (`SMOOTH.TXT`). Fixed cameras that switch when
+event lines are crossed.
+**Success criterion:** you can walk around `DUN1` and the camera cuts where it
+should.
 
-### Fase 5 — Il gioco si muove
-Sistema di animazione con tweening, collisioni personaggio-personaggio,
-combattimento (`PCOL.TXT`), IA (`AICTRL.GAS`), raccolta oggetti e inventario.
-**Criterio di riuscita:** ci si batte con un Hunter e uno dei due muore.
+### Phase 5 — The game moves
+Animation with tweening, character-to-character collision, combat (`PCOL.TXT`),
+AI (`AICTRL.GAS`), item pickup and inventory.
+**Success criterion:** you can fight a Hunter and one of you dies.
 
-### Fase 6 — Il gioco racconta
-VM degli script (i 60+ opcode), compilatore `.SCT` (per rigenerare gli script
-dal sorgente disponibile e per debug), eventi di scena, world state bit,
-trigger dei filmati.
-**Criterio di riuscita:** il menu principale funziona e parte l'intro.
+### Phase 6 — The game tells a story
+The script VM (60+ opcodes), a `.SCT` compiler (to rebuild scripts from the
+available source and for debugging), scene events, world state bits, FMV
+triggers.
+**Success criterion:** the main menu works and the intro plays.
 
-### Fase 7 — Il gioco suona e parla
-Mixer PCM a 16 voci, Red Book dalle tracce audio della ISO, playback Cinepak
-sincronizzato, tre volumi separati.
+### Phase 7 — The game speaks
+16-voice PCM mixer, Red Book playback from the image's audio track, synchronised
+Cinepak playback, three separate volumes.
 
-### Fase 8 — Rifinitura
-Salvataggi, menu pausa, HUD e barra vita, font, schermata crediti,
-gestione NTSC/PAL, opzioni moderne come flag.
+### Phase 8 — Polish
+Save games, pause menu, HUD and life bar, font, credits screen, NTSC/PAL
+handling, modern options behind toggles.
 
-## 5.4 Struttura del repository
+## 5.4 Repository layout
 
 ```
-docs/          documentazione tecnica (questo materiale)
-tools/         estrattori e utility, C99, indipendenti dal motore
-  jcd/         lettore del container .jcd
-  extract/     estrattori per data type
+docs/          technical documentation
+tools/         extractors and utilities, independent of the engine
+  jcd/         .jcd container reader
+  extract/     per-data-type extractors
 src/
   main.c       game loop
-  game/        WST / ACT / CIT / set / scene / eventi
-  anim/        animazione, tweening, collisioni, combattimento
-  r3d/         rasterizer flat + Z-buffer
+  game/        WST / ACT / CIT / sets / scenes / events
+  anim/        animation, tweening, collision, combat
+  r3d/         flat rasteriser plus Z-buffer
   script/      VM
   media/       Cinepak, Red Book, PCM
   platform/    SDL3
-assets/        (gitignore) output degli estrattori
-Highlander/    (gitignore) materiale originale dell'utente
+assets/        (git-ignored) extractor output
+Highlander/    (git-ignored) the user's own original material
 ```
 
-## 5.5 Rischi noti
+## 5.5 Known risks
 
-| Rischio | Mitigazione |
+| Risk | Mitigation |
 |---|---|
-| ~~Gli offset di luglio '95 non valgono sul disco retail~~ **confermato in fase 1** | Si ricostruisce la mappa per scansione delle firme. Gia' fatto per i 36 Cinepak; da fare per gli altri data type |
-| Formato scena/Z-buffer non documentato nel sorgente | I 110 blocchi per scena sono un vincolo forte; validazione visiva su fondali riconoscibili |
-| Il sorgente e' un WIP, non il codice della release | Va trattato come **specifica di progetto**, non come oracolo. Dove diverge dal disco, vince il disco |
-| Mancano i tool di conversione asset (Map Tool, SKELSKIN) | Non servono: leggiamo i dati gia' convertiti dal CD. Servirebbero solo per rigenerare contenuti nuovi |
-| CRY vs RGB16 con VARMOD | Da chiarire sperimentalmente sui fondali estratti; `CRYRGB.TXT` e le costanti colore dei modelli danno riferimenti incrociati |
+| ~~The July 1995 offsets do not match the retail disc~~ **confirmed in phase 1** | Rebuild the map by signature scanning. Already done for the 36 Cinepak films; still to do for the other data types |
+| Scene / Z-buffer format not documented in the source | The 110-blocks-per-scene figure is a strong constraint; validate visually against recognisable backdrops |
+| The source is a WIP, not the shipped code | Treat it as a **design specification**, not an oracle. Where it disagrees with the disc, the disc wins |
+| The asset conversion tools are missing (Map Tool, SKELSKIN) | Not needed: we read data that is already converted, off the CD. They would only matter for authoring new content |
+| CRY vs RGB16 with VARMOD | To be settled experimentally on extracted backdrops; `CRYRGB.TXT` and the model colour constants give cross-references |
+| Where the speech went | The retail disc has no Red Book speech track. It has to be located among the samples or inside the films |

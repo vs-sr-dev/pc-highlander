@@ -1,1 +1,1 @@
-Estrattori e utility (fase 1+). Vuoto in sessione 1.
+Extractors and utilities. See tools/jcd/ for the disc image reader.
