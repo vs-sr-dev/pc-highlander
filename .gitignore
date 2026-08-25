@@ -29,6 +29,7 @@ cmake-build-*/
 *.dll
 *.pdb
 *.ilk
+*.ppm
 
 # Editor / OS
 .vs/

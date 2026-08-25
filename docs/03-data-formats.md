@@ -237,6 +237,23 @@ So the retail exporter **swapped Y and Z** and rescaled by roughly 0.28, while
 leaving the facet list — which indexes vertices, not coordinates — untouched.
 Source Y was the up axis in 3D Studio; on the disc **Z is up**.
 
+### But only for the items, and the world table stands them up
+
+That applies to the nineteen models linked into the binary. The 220 on track 5,
+the characters, are the other way round: a character's fifteen pieces run along
+**y**, from −141 to +140, about 280 units in all.
+
+The world table reconciles them. The world is y up (the collision mesh is
+`(x, z)` with a height per triangle, and `FORMMAT.GAS` calls the rotation about
+y the azimuth), and 29 of the 197 world records — every one of them a radius-50
+item, never a character — carry `face = (192, 0, 0)`. On the 256-step circle the
+game uses, 192 is −90° of elevation: exactly the quarter turn that takes model z
+to world y and stands a z-long model upright. Characters carry azimuth only.
+
+It is not applied uniformly — three of the five wine bottles carry it and two do
+not — which is either dressing or a default overridden elsewhere. See
+[13-viewer.md](13-viewer.md) 13.2.
+
 ---
 
 ## 3.4 Animations

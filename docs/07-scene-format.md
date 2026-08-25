@@ -2,7 +2,9 @@
 
 Status: **solved.** The container, the slot layout, the camera footer, the pixel
 format and the per-pixel obfuscation are all settled and verified against the
-disc. All 672 backdrops and their Z-buffers extract cleanly.
+disc. All 672 backdrops and their Z-buffers extract cleanly, and phase 3 added
+what the two halves *mean*: the matrix arrangement (7.5) and the depth
+encoding (7.6).
 
 Reference implementation: [tools/scene/scenex.py](../tools/scene/scenex.py).
 
@@ -152,13 +154,38 @@ A perfect unit vector. This also independently confirms that the 32-bit byte
 reversal is correct for this track's payload, not just for its header. The
 layout matches the `VIEW MATRIX ARRANGEMENT IN MEMORY` note in `3DENGINE.GAS`.
 
+**The nine words are the rows**, and the world they map from has **y up**:
+`m[1]` — the y component of the first row, the camera's own right vector — is
+zero in all 672 scenes, which is a camera with no roll read one way and nothing
+at all read the other. The transform is `v = M · (w − T)`, `T` being the
+translation at +20, that is the camera's world position; view z comes out
+negative in front of the camera. Projecting a set's collision mesh through it
+lands the walkable area on the floor of the picture. See
+[13-viewer.md](13-viewer.md) 13.1.
+
 The scene id at +0 is unique across all 672 slots and strictly increasing, but
 with gaps — it is a global identifier, not the slot index. Session 4 mapped the
 ids to sets: the same 16-bit value appears in each set's scene table, and it is
 structured as `group * 64 + camera` ([10-set-track.md](10-set-track.md) §10.2),
 which is what lets every backdrop be named `<SET>_CAM<nn>`.
 
-## 7.6 Appendix: what the empirical search ruled out
+## 7.6 The depth half: what the numbers mean
+
+The stored 16-bit value is **`65536 − |z|`** — the view-space z, negative in
+front of the camera, written as a two's-complement word. Nearer is larger, and
+the distance in front of the camera is `65536 − depth`.
+
+It is measured rather than assumed: projecting every set's collision-mesh
+vertices, whose distance from the camera follows from geometry alone, into every
+scene that set owns gives 35,603 (known `|z|`, stored depth) pairs, and the ratio
+`(65536 − depth) / |z|` peaks in the bin 0.99 to 1.00. Occluders can only pull
+an individual reading nearer, never further, which is why the median sits lower
+at 0.80 while the peak is on 1.
+
+Full argument, cross-checks and the one thing that does not reconcile — the
+blitter's `ZMODELT` sense — in [13-viewer.md](13-viewer.md) 13.3.
+
+## 7.7 Appendix: what the empirical search ruled out
 
 Kept because it cost a session and because it is a useful negative result: none
 of this was ever going to work, since the data was obfuscated rather than

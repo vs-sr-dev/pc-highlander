@@ -5,7 +5,7 @@
 | Decision | Choice |
 |---|---|
 | Language | **C99** |
-| Platform | **SDL3** (video, audio, input), built with **CMake** |
+| Platform | **SDL3** (video, audio, input), built with a plain **Makefile** |
 | Rendering | **software rasteriser**, 320x200 16-bit framebuffer plus Z-buffer, upscaled through an SDL texture |
 | Fidelity | **faithful first, options later** — the original game is the reference; improvements ship as toggles |
 | Repository | **strict BYOA** — no 1995 source, no disc image, no assets |
@@ -90,32 +90,40 @@ disc depends on it.
 **Success criteria:** backdrops open as PNG; the wine-bottle model extracted
 from the CD matches `MERLOT79.INC` in the source.
 
-### Phase 3 — Something on screen
-SDL3 window, 320x200 framebuffer, and a viewer that shows a backdrop with its
-Z-buffer and lets us spin an extracted model inside it, lit and depth-tested.
-**Success criterion:** the model passes correctly behind scenery.
+### Phase 3 — Something on screen — **done**
+`src/` builds `hlview`: an SDL3 window over a 320x200 RGB16 framebuffer that
+shows any of the 672 backdrops by name, its Z half as grey, an extracted model
+on a turntable, and that model composited into a scene and depth-tested against
+the backdrop's own Z-buffer.
+**Success criterion met:** a wine bottle standing on a tent floor keeps all 74
+of its pixels in the open, 33 of 74 with the tent pole across it, and none at
+all behind the pole — the same code and scene, one coordinate moved.
 
-Everything it needs is now known, and these four facts are the ones that cost a
-session each if rediscovered by hand:
+Three conventions could not be settled by reading and are now settled by
+drawing ([13-viewer.md](13-viewer.md)):
 
-* **Pixels are R5 B5 G6**, not RGB565 ([07-scene-format.md](07-scene-format.md)
-  §7.3). A scene is 320x200 colour then 320x200 16-bit depth, and the depth half
-  is a smooth surface — a good self-check that the decode is right.
-* **Models are Z up** (§3.3), and the retail exporter rescaled by about 0.28
-  against the source coordinates.
-* **The camera** is in the scene's own 48-byte footer at payload + 256,000: a
-  3x3 rotation matrix in s1.14 and a translation as three longs (§7.5).
-* **The projection** is in `3DENGINE.GAS`, and `MAIN.S` supplies its one
-  variable with `move.w #300,scaling`:
+* **The camera matrix is row major over a y-up world** — `m[1]` is zero in all
+  672 scenes, which only means something read as rows, and projecting a set's
+  collision mesh through it lands the walkable area on the floor of the picture.
+* **The Z-buffer holds `65536 − |z|`**, the negative view z as a two's-complement
+  word, so nearer is larger. Measured over 35,603 mesh points across the 48 sets.
+* **Item models are stored on their side and the world records stand them up**,
+  with `face` elevation 192 — −90° on the game's 256-step circle. Characters are
+  y-long already and carry azimuth only.
 
-  ```
-  sx = 159 + (x * 300) / max(|z|, 40)
-  sy =  99 + (y * 246) / max(|z|, 40)      ; 246 = 300 * ASPECT, ASPECT = $347A / 2^14
-  ```
+Four facts carried in from phase 2 held up unchanged: pixels are R5 B5 G6, the
+camera is the scene's own 48-byte footer, models are z up for the items, and the
+projection is `3DENGINE.GAS`'s
 
-  The screen centre is `(159, 99)`, so the window really is 320x200, and `z` is
-  clamped to 40 to keep the divide sane. `XS`/`YS` in the same file are the
-  commented-out constant form of the same 300.
+```
+sx = 159 + (x * 300) / max(|z|, 40)
+sy =  99 + (y * 246) / max(|z|, 40)      ; 246 = 300 * ASPECT, ASPECT = $347A / 2^14
+row = 199 - sy
+```
+
+One thing the viewer turned up and could not close: an object placed at the
+collision mesh's height sinks into the ground the backdrop draws, by 50 to 130
+units depending on the set (13.6). Phase 4 has to answer it.
 
 ### Phase 4 — The world exists
 Port the data structures (WST, ACT, CIT, DDA, character sheets), set loading,
@@ -156,6 +164,7 @@ src/
   game/        WST / ACT / CIT / sets / scenes / events
   anim/        animation, tweening, collision, combat
   r3d/         flat rasteriser plus Z-buffer
+  util/        file and JSON reading
   script/      VM
   media/       Cinepak, Red Book, PCM
   platform/    SDL3

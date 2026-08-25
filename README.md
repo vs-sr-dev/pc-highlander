@@ -3,25 +3,29 @@
 A native PC reimplementation of **Highlander: The Last of the MacLeods**
 (Lore Design Ltd. / Atari Corp., Jaguar CD, 1995).
 
-> **Status: phase 2 complete.** All 672
-> backdrops and their Z-buffers extract as PNG; the scene payload turned out to
-> be XORed with an 8 KB key held in the game binary, read out of the shipped code
-> with the 68000 and Jaguar-GPU disassemblers written for the job. The models
-> extract too, and the wine bottle from the disc is facet-for-facet the
-> `MERLOT79.INC` in the 1995 source.
+> **Status: phase 3 complete — there is something on screen.** `src/` builds
+> `hlview`: an SDL3 window over a 320x200 RGB16 framebuffer that opens any of
+> the 672 backdrops by name, shows its Z-buffer, spins a model read straight
+> off the disc, and **composites that model into the scene, depth-tested against
+> the backdrop's own Z half.** A wine bottle standing on a tent floor keeps all
+> 74 of its pixels in the open, 33 of 74 with the tent pole across it, and none
+> at all behind the pole.
 >
-> Also out: 327 animations, the 48 sets with their collision meshes and event
-> lists, the item text in three languages, and the **script VM** — the game's
-> puzzle and cutscene logic is bytecode for a virtual machine that runs on the
-> GPU, and all 1,173 commands of it disassemble, which places 33 of the 36 films.
-> The **dialogue** turned out to be interleaved with the video: 18 minutes 23
-> seconds of it, plus 78 sound-effect bundles, all out as `.wav`. The
-> **world state** and the **character sheets** were never on the disc at all —
-> they are static tables in the binary.
+> Drawing settled the three conventions no amount of reading could
+> ([docs/13-viewer.md](docs/13-viewer.md)): the camera footer's matrix is **row
+> major over a y-up world**, the Z-buffer stores **`65536 - |z|`** so nearer is
+> larger, and the item models are stored on their side with the **world records
+> standing them up** at elevation 192 on the game's 256-step circle.
 >
-> [tools/manifest.py](tools/manifest.py) ties it together into the single JSON
-> the engine will read. One 156 KB track is still unidentified and nothing
-> else depends on it. Next is phase 3, a viewer.
+> Behind that, phase 2: all 672 backdrops and their Z-buffers, the models — the
+> disc's wine bottle is facet-for-facet the `MERLOT79.INC` of the 1995 source —
+> 327 animations, the 48 sets with collision and events, the **script VM** with
+> all 1,173 of its commands, 18 minutes 23 seconds of **dialogue** recovered
+> from inside the Cinepak films, 78 sound-effect bundles, the item text in three
+> languages, and the **world state** and **character sheets**, which were never
+> on the disc at all but static tables in the binary.
+> [tools/manifest.py](tools/manifest.py) ties it all into the single JSON the
+> engine reads. One 156 KB track is still unidentified and nothing depends on it.
 
 ---
 
@@ -81,7 +85,20 @@ Z-buffer**, plus **Cinepak** full-motion video and **Red Book** CD audio.
 | [docs/10-set-track.md](docs/10-set-track.md) | The set track: scene tables, doorways, collision, events |
 | [docs/11-script-vm.md](docs/11-script-vm.md) | The script VM: encoding, opcodes, and what the scripts do |
 | [docs/12-world-and-sheets.md](docs/12-world-and-sheets.md) | The world-state table and the character sheets |
+| [docs/13-viewer.md](docs/13-viewer.md) | The viewer: the view transform, the Z-buffer convention, the rasteriser |
 | [docs/sessions/](docs/sessions/) | Work log, one note per session |
+
+## The engine
+
+```
+make                                    # -> build/hlview, needs SDL3
+build/hlview --scene CA_CAM03           # a backdrop, by name
+build/hlview --scene CA_CAM03 --depth   # its Z-buffer
+build/hlview --model boot:6 --spin      # the wine bottle, turning
+build/hlview --scene TENT6_CAM01 --model boot:6 --object '#190'
+```
+
+More in [src/README.md](src/README.md).
 
 ## Tools
 
