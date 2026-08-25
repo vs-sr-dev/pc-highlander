@@ -291,13 +291,63 @@ against the film inventory finds film 34 at `$5212` and again at `$30822`.
 
 ---
 
-## TODO for session 6
+## TODO for session 6 — phase 3, the viewer
 
-1. **Phase 3 — the viewer.** SDL3, 320x200, a backdrop with its Z-buffer and an
-   extracted model composited into it and depth-tested. Two things to carry over
-   so they are not rediscovered the hard way: the models are **Z up**, and the
-   pixels are **R5 B5 G6**.
-2. **Track 9**, still by widening `dis68k`'s recursion through the jump-table
-   idiom at `$50A6`, or by emulator.
-3. **Names.** 125 world records and three films are still anonymous, and so are
-   seventeen GPU modules. None of it blocks phase 3.
+Phase 2 is done, so the next session writes code instead of reading it. The goal
+is [05-roadmap.md](../05-roadmap.md)'s phase-3 success criterion: **an extracted
+model passes correctly behind the scenery of a real backdrop.**
+
+### 1. The four facts not to rediscover
+
+They are all written down, but they are the ones that cost a session each if
+they are not:
+
+* **pixels are R5 B5 G6**, not RGB565 (§7.3);
+* **models are Z up**, rescaled by about 0.28 against the 1995 coordinates (§3.3);
+* **the camera** is the scene's own 48-byte footer at payload + 256,000 — a 3x3
+  rotation in s1.14 and three longs of translation (§7.5);
+* **the projection** is `sx = 159 + x * 300 / max(|z|, 40)` and
+  `sy = 99 + y * 246 / max(|z|, 40)`, from `3DENGINE.GAS` with `MAIN.S`'s
+  `move.w #300,scaling` — see the phase-3 section of the roadmap.
+
+### 2. Milestones, smallest first
+
+1. **A window and a backdrop.** SDL3, 320x200, load one scene's colour half,
+   convert R5 B5 G6 to RGB888, blit. If the grass is green and the sky is blue,
+   the pixel format is right.
+2. **The depth half as an image.** Render it as greyscale beside the colour.
+   It should read as a smooth surface, which is the check §7.4 already used.
+3. **One model, no scene.** Load an OBJ from `modelx`, spin it with the
+   projection above, flat-shade the facets. Getting this right on its own —
+   before compositing — keeps the two coordinate problems separate.
+4. **Composite.** Put the model in the scene using the footer's matrix, and
+   depth-test each rasterised pixel against the Z half. **That is the success
+   criterion.** The wine bottle in a `CA` view is the natural first subject,
+   since it is the one model verified facet-for-facet against the source.
+5. **Walk the manifest.** Let the viewer take a scene name (`CA_CAM03`) rather
+   than an index, from `assets/manifest.json`.
+
+### 3. What will probably go wrong, and what to check
+
+* **The Z-buffer's sense and scale are not established.** Nothing so far needed
+  to know whether a larger value is nearer or further, or what units it is in.
+  Deriving it is milestone 4's real work: put the model at a known world
+  position from the world-state table — an object whose backdrop obviously shows
+  it — and see which convention makes it sit where the picture says it does.
+* **The model scale against world coordinates** is likewise untested. The world
+  table's positions are in the same units as the collision mesh and the scripts'
+  `slideto` targets, so those three agree; whether the model vertices share them
+  is an assumption until something is rendered.
+* **The rotation matrix's row/column order** is a coin flip until a scene comes
+  out right. `3DENGINE.GAS`'s `VIEW MATRIX ARRANGEMENT IN MEMORY` note is the
+  reference, and a wrong guess shows up immediately as a mirrored scene.
+
+### 4. If there is time left
+
+* **Track 9**, by widening `dis68k`'s recursion through the computed-jump idiom
+  at `$50A6`, or under an emulator. Session 5 narrowed it (§8) without opening
+  it, and nothing else on the disc depends on it.
+* **Names.** 125 world records, three films and seventeen GPU modules are still
+  anonymous. None of it blocks phase 3.
+* **`cshBehaviour`**, the AI selector in the character sheets: eleven distinct
+  values, and `AICTRL.GAS` is where to look. Phase 5 will want it.

@@ -153,8 +153,10 @@ reversal is correct for this track's payload, not just for its header. The
 layout matches the `VIEW MATRIX ARRANGEMENT IN MEMORY` note in `3DENGINE.GAS`.
 
 The scene id at +0 is unique across all 672 slots and strictly increasing, but
-with gaps — it is a global identifier, not the slot index. Mapping ids to sets
-is still open.
+with gaps — it is a global identifier, not the slot index. Session 4 mapped the
+ids to sets: the same 16-bit value appears in each set's scene table, and it is
+structured as `group * 64 + camera` ([10-set-track.md](10-set-track.md) §10.2),
+which is what lets every backdrop be named `<SET>_CAM<nn>`.
 
 ## 7.6 Appendix: what the empirical search ruled out
 

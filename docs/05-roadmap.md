@@ -91,10 +91,31 @@ disc depends on it.
 from the CD matches `MERLOT79.INC` in the source.
 
 ### Phase 3 — Something on screen
-SDL3 window, 320x200 framebuffer, CRY/RGB16 to RGB888 conversion, and a viewer
-that shows a backdrop with its Z-buffer and lets us spin an extracted model
-inside it, lit and depth-tested.
+SDL3 window, 320x200 framebuffer, and a viewer that shows a backdrop with its
+Z-buffer and lets us spin an extracted model inside it, lit and depth-tested.
 **Success criterion:** the model passes correctly behind scenery.
+
+Everything it needs is now known, and these four facts are the ones that cost a
+session each if rediscovered by hand:
+
+* **Pixels are R5 B5 G6**, not RGB565 ([07-scene-format.md](07-scene-format.md)
+  §7.3). A scene is 320x200 colour then 320x200 16-bit depth, and the depth half
+  is a smooth surface — a good self-check that the decode is right.
+* **Models are Z up** (§3.3), and the retail exporter rescaled by about 0.28
+  against the source coordinates.
+* **The camera** is in the scene's own 48-byte footer at payload + 256,000: a
+  3x3 rotation matrix in s1.14 and a translation as three longs (§7.5).
+* **The projection** is in `3DENGINE.GAS`, and `MAIN.S` supplies its one
+  variable with `move.w #300,scaling`:
+
+  ```
+  sx = 159 + (x * 300) / max(|z|, 40)
+  sy =  99 + (y * 246) / max(|z|, 40)      ; 246 = 300 * ASPECT, ASPECT = $347A / 2^14
+  ```
+
+  The screen centre is `(159, 99)`, so the window really is 320x200, and `z` is
+  clamped to 40 to keep the divide sane. `XS`/`YS` in the same file are the
+  commented-out constant form of the same 300.
 
 ### Phase 4 — The world exists
 Port the data structures (WST, ACT, CIT, DDA, character sheets), set loading,
