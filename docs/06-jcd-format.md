@@ -78,19 +78,27 @@ header of the first film, to the byte.
 | tr | tag | code | blocks | MB | contents |
 |---:|---|---|---:|---:|---|
 | 1 | AUDIO | — | 10,472 | 23.5 | audio track (16-bit PCM) |
-| 2 | — | `0x20` | 120 | 0.3 | boot, 68000 code |
-| 3 | `DATA` | `0x21` | 2,689 | 6.0 | to be identified |
-| 4 | `PICT` | `0x22` | 73,921 | 165.8 | **scenes**: backdrops plus Z-buffer |
-| 5 | `DATA` | `0x23` | 1,849 | 4.1 | to be identified |
-| 6 | `DATA` | `0x24` | 2,129 | 4.8 | audio samples (`WAVE` marker at +4) |
-| 7 | `1111` | `0x25` | 102,127 | 229.1 | **Cinepak** (the tag is the `sync_header` from `CINEPAK.INC`) |
-| 8 | `DATA` | `0x26` | 561 | 1.3 | to be identified |
-| 9 | `DATA` | `0x27` | 67 | 0.2 | to be identified, high-entropy content |
+| 2 | — | `0x20` | 120 | 0.3 | boot: the complete resident game binary |
+| 3 | `DATA` | `0x21` | 2,689 | 6.0 | **sets** — 48 slots of 56 blocks |
+| 4 | `PICT` | `0x22` | 73,921 | 165.8 | **scenes** — 672 slots of 110 blocks |
+| 5 | `DATA` | `0x23` | 1,849 | 4.1 | 33 slots of 56 blocks, contents TBD |
+| 6 | `DATA` | `0x24` | 2,129 | 4.8 | **audio samples** — `WAVE` marker at +4 |
+| 7 | `1111` | `0x25` | 102,127 | 229.1 | **Cinepak** — 36 films, `cvid` 320x240 |
+| 8 | `DATA` | `0x26` | 561 | 1.3 | 10 slots of 56 blocks, contents TBD |
+| 9 | `DATA` | `0x27` | 67 | 0.2 | TBD, high entropy |
+
+Tracks 3, 5 and 8 all use a **uniform slot stride of 56 blocks** (131,712 bytes),
+the same way the scene track uses 110. Slot counts: 48, 33 and 10 respectively.
+
+Entropy per data track is worth recording, because it isolates track 4 as the
+odd one out: track 3 measures 0.28 bits/byte (97% zero fill), track 5 3.23,
+track 6 3.20, track 8 1.84, track 9 5.03 — all plainly raw data. Track 4 alone
+measures 7.81 to 7.88. Whatever is done to the backdrops is done to them only.
 
 193,935 blocks total, about 456 MB on a ~700 MB disc.
 
-Working hypothesis for track 4: 73,921 / 110 = 672.009, so roughly **672 scenes
-of 110 blocks each** (the July build had 594). To be confirmed visually.
+The scene stride on track 4 is confirmed by measurement, not inference — see
+[07-scene-format.md](07-scene-format.md) §7.2.
 
 ## 6.5 How much changed between July and October 1995
 

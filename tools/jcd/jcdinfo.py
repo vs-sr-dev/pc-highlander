@@ -23,6 +23,19 @@ LEADIN = b"ATRI"       # tag repeated at the head of every data track
 TRACK_HDR = b"ATARI APPROVED DATA HEADER ATRI"
 HDR_LEN = 96           # track header, after the lead-in
 
+# What each data track holds on the retail USA disc, keyed by type byte.
+# See docs/06-jcd-format.md.
+KNOWN = {
+    0x20: "boot / resident binary",
+    0x21: "sets (48 slots of 56 blocks)",
+    0x22: "scenes (672 slots of 110 blocks)",
+    0x23: "33 slots of 56 blocks, contents TBD",
+    0x24: "audio samples (WAVE)",
+    0x25: "Cinepak films (36)",
+    0x26: "10 slots of 56 blocks, contents TBD",
+    0x27: "TBD, high entropy",
+}
+
 
 def swap32(buf: bytes) -> bytes:
     """Track data is stored with every long byte-reversed."""
@@ -104,6 +117,10 @@ def cmd_list(path):
         print()
         print("The 'code' column is 0x20 + data track index: it is the data type")
         print("the game uses as a track offset (see GetTrack in CDCONTRO.GAS).")
+        print()
+        for t in tracks:
+            if t.type_code in KNOWN:
+                print(f"  track {t.no}: {KNOWN[t.type_code]}")
 
 
 def cmd_extract(path, outdir):

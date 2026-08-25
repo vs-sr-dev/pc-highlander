@@ -282,6 +282,26 @@ This is a **2D navigation mesh with explicit adjacency**: a character always
 knows which triangle it is in (`citTriangle`), so finding the next one costs a
 neighbourhood walk rather than a global search (`FINDTRI.GAS`).
 
+### Verified against the retail disc
+
+Track 3 holds the sets, 48 slots of 56 blocks each, and the July structure
+parses cleanly. Following the header offsets on real data:
+
+| set | Hinum | Lonum | Event | Coll | Init | Scene | Script | NumTri | NumVer |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 0 | 2 | `$148` | `$A94` | `$108` | `$34` | `$1788` | 154 | 144 |
+| 1 | 0 | 2 | `$1AC` | `$A20` | `$160` | `$34` | `$2868` | 354 | 348 |
+| 17 | 0 | 2 | `$188` | `$9FC` | `$118` | `$34` | 0 | 227 | 233 |
+
+The self-consistency check is exact. For set 0 the collision data ends at
+`Coll + TriOffset + NumTri * 14 = $1788`, which is precisely `ScriptOffset`.
+For set 1 it ends at `$2864` against a `ScriptOffset` of `$2868`, four bytes of
+alignment. So the 14-byte triangle record and the whole set header layout are
+confirmed on shipped data.
+
+Vertices read back as pairs of longs, as documented: the first three of set 0
+are -1986, -2845, -2081.
+
 ---
 
 ## 3.6 The `.MAP` format (map editor)
