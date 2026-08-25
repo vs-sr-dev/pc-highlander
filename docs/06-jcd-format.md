@@ -81,19 +81,57 @@ header of the first film, to the byte.
 | 2 | — | `0x20` | 120 | 0.3 | boot: the complete resident game binary |
 | 3 | `DATA` | `0x21` | 2,689 | 6.0 | **sets** — 48 slots of 56 blocks |
 | 4 | `PICT` | `0x22` | 73,921 | 165.8 | **scenes** — 672 slots of 110 blocks |
-| 5 | `DATA` | `0x23` | 1,849 | 4.1 | 33 slots of 56 blocks, contents TBD |
-| 6 | `DATA` | `0x24` | 2,129 | 4.8 | **audio samples** — `WAVE` marker at +4 |
+| 5 | `DATA` | `0x23` | 1,849 | 4.1 | **models, animations and waves** — 33 slots of 56 blocks |
+| 6 | `DATA` | `0x24` | 2,129 | 4.8 | **audio samples** — 38 `WAVE` bundles, 56-block slots |
 | 7 | `1111` | `0x25` | 102,127 | 229.1 | **Cinepak** — 36 films, `cvid` 320x240 |
-| 8 | `DATA` | `0x26` | 561 | 1.3 | 10 slots of 56 blocks, contents TBD |
-| 9 | `DATA` | `0x27` | 67 | 0.2 | TBD, high entropy |
+| 8 | `DATA` | `0x26` | 561 | 1.3 | **animations** — 10 slots of 56 blocks |
+| 9 | — | `0x27` | 67 | 0.2 | 55 KB of entropy-8 data, then filler — identity open |
 
-Tracks 3, 5 and 8 all use a **uniform slot stride of 56 blocks** (131,712 bytes),
-the same way the scene track uses 110. Slot counts: 48, 33 and 10 respectively.
+Tracks 3, 5, 6 and 8 all use a **uniform slot stride of 56 blocks**
+(131,712 bytes), the same way the scene track uses 110. Slot counts: 48, 33, 38
+and 10 respectively.
 
-Entropy per data track is worth recording, because it isolates track 4 as the
-odd one out: track 3 measures 0.28 bits/byte (97% zero fill), track 5 3.23,
-track 6 3.20, track 8 1.84, track 9 5.03 — all plainly raw data. Track 4 alone
-measures 7.81 to 7.88. Whatever is done to the backdrops is done to them only.
+Track 2's "tag" is not text at all — the four bytes are `00 00 40 00`, the load
+address, and the track holds a small boot loader followed by the game itself.
+See [08-code-and-gpu.md](08-code-and-gpu.md).
+
+### What is in tracks 5 and 8
+
+Both hold records that match the July structures byte for byte, each record
+preceded by a long holding its length, each slot starting a new record:
+
+* **models** — the `SKELSKIN` header of §3.3. Self-consistent throughout: `VLP`
+  is always `$4018`, i.e. the header plus 24 bytes at a load base of `$4000`,
+  and `FLP - VLP` equals `(vertices + origins) * 8` in every record checked.
+  Twenty-one of track 5's slots are models, and the character slots hold fifteen
+  models each.
+* **animations** — the `ANIM` header of §3.4, at offset 4. Every record
+  satisfies `size = 14 + framesize * frames`, with `framesize = 66 =
+  20 + 3 * 15`, fifteen animated pieces and 20 fps. Track 8 is animations end to
+  end; slots 2, 4 and 6 of track 5 are as well.
+* **waves** — `long total; 'WAVE'; long size; 8-bit samples`. Nine slots of
+  track 5 and all 38 slots of track 6.
+
+Fifteen models per character and fifteen animated pieces per animation is the
+same number seen from two sides, which is a good cross-check on both readings.
+
+So track 5 is not one asset type but a **per-entity bundle** — a character's
+models, its animations and its sounds in adjacent 56-block slots.
+
+### Track 9
+
+156,512 bytes, of which only the **first 55,188 are real**: the rest is the long
+`$C00DADE0` repeated 25,187 times, then the `ATARI APPROVED DATA TAILER`. The
+real part measures 7.996 bits/byte and shows no repeating-key structure — every
+shift from 1 to 20,000 was tested, peak coincidence 0.0051 against a 0.0039
+baseline — and it is not XORed with the scene key. Its 64-byte content tag is
+high-entropy as well, so even the tag is scrambled. It is compressed or
+encrypted; no code asking for type `$27` has been found yet.
+
+Entropy per data track: track 3 measures 0.28 bits/byte (97% zero fill), track 5
+3.23, track 6 3.20, track 8 1.84 — all plainly raw. Track 4 measures 7.81 to
+7.88 because the backdrops are XOR-obfuscated (§7.3). Track 9's figure of 5.03
+is an average diluted by its filler; its real payload measures 7.996.
 
 193,935 blocks total, about 456 MB on a ~700 MB disc.
 
@@ -121,8 +159,10 @@ retail   544  977 2688 1472  940  5734 4428 4115 2343 15165 ... (35 gaps)
 **3. There is no longer a Red Book track for speech.** The July source addresses
 88 spoken lines (`BO_CDAUDIO_LINE005` .. `LINE100`, up to block 26,653) on a
 dedicated audio track. On the retail disc the only audio track is the first one,
-10,472 blocks long (2:19) — far too short. The speech moved somewhere else, most
-likely into the films or among the samples.
+10,472 blocks long (2:19) — far too short. The speech went **into the films**:
+every Cinepak chunk carries a `STAB` sample table alongside its video, and the
+sampled-audio tracks together hold only about 98 seconds, which is a
+sound-effect budget. See [09-text-and-fmv.md](09-text-and-fmv.md) §9.2.
 
 **Operational conclusion:** use the July source as an **engine specification**,
 not as a disc map. The `DATA.INC` and `CDLINK.INC` tables remain valuable for

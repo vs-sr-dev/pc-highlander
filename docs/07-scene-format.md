@@ -1,13 +1,14 @@
 # 07 — Scene track and pixel format
 
-Status: **partially solved.** The container, the slot layout and the camera
-footer are settled. The pixel encoding is not. This document records what has
-been proven and, just as importantly, what has been ruled out — so the next
-attempt does not repeat the same experiments.
+Status: **solved.** The container, the slot layout, the camera footer, the pixel
+format and the per-pixel obfuscation are all settled and verified against the
+disc. All 672 backdrops and their Z-buffers extract cleanly.
+
+Reference implementation: [tools/scene/scenex.py](../tools/scene/scenex.py).
 
 ---
 
-## 7.1 The 16-bit pixel format is settled
+## 7.1 The 16-bit pixel format
 
 The Jaguar's `RGB16` mode is **not** the usual RGB565. The bit layout is:
 
@@ -18,9 +19,15 @@ bit  15 14 13 12 11 | 10  9  8  7  6 |  5  4  3  2  1  0
 
 Five bits of red, then five of **blue**, then six of green.
 
-This was pinned down without guesswork, using the model files that survive in
-the July source: `SKELSKIN.EXE` emitted each material as a named constant with
-the original 3D Studio RGB triple in the comment, which gives free ground truth.
+```c
+r = ((px >> 11) & 0x1F) * 255 / 31;
+b = ((px >>  6) & 0x1F) * 255 / 31;
+g = ( px        & 0x3F) * 255 / 63;
+```
+
+This was first pinned down from the `SKELSKIN.EXE` model files in the July
+source, which carry the original 3D Studio RGB triple in a comment beside each
+colour constant:
 
 | Constant | Value | Decoded R5 B5 G6 | Comment in the source |
 |---|---|---|---|
@@ -29,148 +36,151 @@ the original 3D Studio RGB triple in the comment, which gives free ground truth.
 | `COLOURmerlot796` | `$58D0` | 90, 64, 24 | `r = 88, g = 67, b = 29` |
 | `COLOURmerlot797` | `$6913` | 106, 76, 32 | `r = 107, g = 79, b = 35` |
 
-All within rounding error of the 5- and 6-bit quantisation. Conversion:
+It is now **confirmed on the shipped backdrops as well**: decoding a decoded
+scene as R5 B5 G6 gives green grass, blue sky and brown rock; the same bits read
+as RGB565 give a uniformly purple image.
 
-```c
-r = ((px >> 11) & 0x1F) * 255 / 31;
-b = ((px >>  6) & 0x1F) * 255 / 31;
-g = ( px        & 0x3F) * 255 / 63;
-```
-
-## 7.2 Scene slot layout is settled, exactly
+## 7.2 Scene slot layout
 
 Track 4 (`PICT`), payload at file offset 31,236,768.
 
-Measured by locating every run of `PICT` padding inside the track and taking the
-spacing: **671 gaps, all identical**.
-
 ```
 scene stride    258,720 bytes = 110 blocks exactly   (matches BO_SCENE_* step $6e)
-  data          256,000 bytes   fixed, no padding, identical for every scene
-  footer             48 bytes   camera data
-  slack           2,672 bytes   zero fill
+  data          256,000 bytes   64,000 colour pixels then 64,000 depth values
+  footer             48 bytes   camera
+  slack           2,608 bytes   zero fill
+  next tag           64 bytes   "PICT" repeated 16 times
 scene count     672
 ```
+
+The `PICT` tag block sits at the **end** of each slot, introducing the next
+one; scene 0 needs none because the track's own 64-byte content tag serves that
+purpose. Scene *n* therefore starts at exactly `n * 258,720`.
+
+The GPU relies on that tag: the scene module scans the CD buffer for the long
+`'PICT'`, then for sixteen of them in a row, and takes the byte after the
+sixteenth as the start of the payload.
 
 672 scenes against the 594 in `CDLINK.INC` — 78 camera views were added between
 July and October 1995.
 
-The 256,000-byte figure is **exact and constant** across every scene sampled
-(0, 1, 2, 3, 10, 50, 100, 300, 500, 671), with zero trailing padding. So the
-scene payload is a **fixed-size structure**, not a variable-length compressed
-stream. 256,000 = 320 x 200 x 4 bytes, i.e. one 16-bit colour plus one 16-bit
-depth value per pixel.
+## 7.3 The obfuscation: XOR with an 8 KB key
 
-## 7.3 The camera footer
+The payload is **not compressed**. It is XORed with an 8,192-byte key held in
+the resident binary at address **`$30610`**.
 
-48 bytes at offset 256,000, then zero fill. It holds the view matrix in
-**s1.14 fixed point**, matching the `VIEW MATRIX ARRANGEMENT IN MEMORY` note in
-`3DENGINE.GAS`.
+The game does this on the GPU. The scene module (see
+[08-code-and-gpu.md](08-code-and-gpu.md)) programs the blitter like this:
 
-Confirmed numerically on scene 671, whose footer contains `0x4000` — exactly 1.0
-in s1.14 — alongside `0x2D94` (11668) and `0xD313` (-11501):
+```
+A1_BASE  = scene payload (phrase aligned)   destination
+A1_FLAGS = $0028                            32 bits per pixel
+A1_PIXEL = 0
+A2_BASE  = $30610                           source: the key
+A2_FLAGS = $8028                            32 bpp, masked
+A2_MASK  = $000007FF                        wrap the source every 2,048 pixels
+A2_PIXEL = 0
+B_COUNT  = $00017D00                        1 row of 32,000 pixels
+B_CMD    = $00C00009                        SRCEN | DSTEN | LFU (~A&B)|(A&~B)
+```
+
+`B_CMD` bit 0 is SRCEN and bit 3 DSTEN; bits 22 and 23 select the logic function
+`(~A & B) | (A & ~B)`, which is exactly **XOR**. So the blit rewrites the scene
+in place as `payload ^= key`.
+
+Two details decide the key:
+
+* **The key is 8,192 bytes, not 2,048.** `A2_MASK` masks the *pixel* index, and
+  the blit runs at 32 bits per pixel, so `$7FF` wraps after 2,048 pixels =
+  8,192 bytes. Measured: XORing scene 0 with a 2,048-byte key drops the entropy
+  from 7.81 to 7.58 bits/byte — noise; with the 8,192-byte key it drops to 5.37
+  and the image appears.
+* **The key index restarts at the halfway point.** The module issues the blit
+  twice, 32,000 pixels each time, and between the two it writes `A2_PIXEL = 0`
+  again while leaving A1 to carry on. So byte *i* of each 128,000-byte half is
+  XORed with `key[i mod 8192]`, not `key[(half*128000 + i) mod 8192]`. Getting
+  this wrong decodes the colour half correctly and leaves the depth half as
+  noise, because 128,000 is not a multiple of 8,192.
+
+The key itself is a **patched copy of the first 8 KB of the game code**. The
+region `$30610` onward mirrors `$5000` onward instruction for instruction for a
+few hundred bytes and then diverges. It looks like code, which is presumably the
+point — it does not read as a key sitting in the binary, and it is resident for
+free. Take it from `$30610`; the copy at `$5000` is not identical and will not
+decode.
+
+## 7.4 Decoding, end to end
+
+```python
+key = boot[code_off + 0x30610 - 0x5000:][:8192]     # code_off = end of "CODE"x16
+pad = numpy.resize(key, 128000)
+data = bytearray(slot[:256000])
+data[:128000] ^= pad
+data[128000:] ^= pad
+colour = data[:128000]      # 320x200, R5 B5 G6
+depth  = data[128000:]      # 320x200, 16-bit Z
+```
+
+Verified over all 672 scenes: the depth half becomes a smooth surface (mean
+absolute horizontal difference typically a few hundred out of 65,535) and the
+colour half a coherent picture. The eight scenes that measure roughest are
+genuinely busy images — heavily dithered canyon rock and foliage — not
+mis-decodes.
+
+## 7.5 The camera footer
+
+48 bytes at offset 256,000, then zero fill:
+
+```
++0   .w   scene id          unique per scene, 64 .. 3084, always increasing
++2   9.w  rotation matrix   3x3, s1.14
++20  3.l  translation       x, y, z
++32  1.l  672               the same value in every scene
++36  2.l  zero
++44  .w   varies            per scene: 234, 197, 300, 144, 100, 259, ...
++46  .w   zero
+```
+
+The matrix is a genuine rotation. Scene 671 carries `$4000` — exactly 1.0 in
+s1.14 — alongside `$2D94` (11668) and `$D313` (-11501):
 
 ```
 11668^2 + 11501^2 = 268,415,225      sqrt = 16383.99 ~ 16384
 ```
 
-A perfect unit vector. This is a rotation matrix, and it also **independently
-confirms that the 32-bit byte reversal is correct for this track's payload**,
-not just for its header.
+A perfect unit vector. This also independently confirms that the 32-bit byte
+reversal is correct for this track's payload, not just for its header. The
+layout matches the `VIEW MATRIX ARRANGEMENT IN MEMORY` note in `3DENGINE.GAS`.
 
-## 7.4 The pixel encoding — what is ruled out
+The scene id at +0 is unique across all 672 slots and strictly increasing, but
+with gaps — it is a global identifier, not the slot index. Mapping ids to sets
+is still open.
 
-Everything below was tested and produced noise. Recording it so nobody repeats it.
+## 7.6 Appendix: what the empirical search ruled out
+
+Kept because it cost a session and because it is a useful negative result: none
+of this was ever going to work, since the data was obfuscated rather than
+formatted unusually.
 
 | Hypothesis | Result |
 |---|---|
-| Plain 320x200 raster, first half = image | noise |
-| second half = image | noise |
-| per-pixel interleave `[colour][depth]...` | noise |
-| per-phrase interleave (8-byte) | noise |
+| Plain 320x200 raster, either half | noise |
+| per-pixel and per-phrase interleave | noise |
 | byte-order variants: none / 16-bit swap / 32-bit reversal / word swap | all noise |
 | widths 160, 200, 240, 256, 320, 384, 400, 512, 640 | no width wins |
-| tiled layouts — widths 2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 24, 32, 40, 48, 64, 80, 128 | flat at every scale |
+| tiled layouts, 17 tile widths from 2 to 128 | flat at every scale |
 | delta coding (global cumsum, per-row cumsum) | worse than raw |
 | bit-planar (16 planes of 8,000 bytes) | noise |
 | "take n words every m" sweep, m = 1..16, n = 1..m | nothing above baseline |
 
-Supporting measurements:
+What the bit-level analysis *did* show — that bit 15 correlated spatially at
+0.80-0.84 while bits 14 and 13 looked random, and that half A was mostly
+bit15 = 0 while half B was mostly bit15 = 1 — was real signal leaking through
+the XOR, not structure in the encoding. A repeating key leaves exactly that kind
+of residue: the plaintext's own statistics survive in whichever bit positions
+the key happens to be biased in.
 
-* **Byte autocorrelation** over strides 16 to 4096 decays monotonically. No peak
-  at 640 (320 px at 16 bpp) or anywhere else, on the full byte and on the high
-  byte alone.
-* **Adjacent-sample difference** is flat at lag 1 through 12. Even immediate
-  neighbours are numerically uncorrelated.
-* **Byte histogram is not uniform** — counts range from 455 to 5,591 against a
-  mean of 1,000, and every one of the 256 values occurs. Well-compressed or
-  encrypted data would be flat, so this is not a general-purpose codec output.
-* **Entropy is 7.81 to 7.88 bits/byte**, uniform in 32 KB windows.
-
-## 7.5 The pixel encoding — what is proven
-
-Bit-level analysis is where the structure finally shows up. Agreement of each
-bit position between horizontally and vertically adjacent 16-bit samples
-(0.50 = random):
-
-| bit | half A horiz | half A vert | half B horiz | half B vert |
-|---:|---:|---:|---:|---:|
-| 15 | **0.825** | **0.795** | **0.839** | **0.812** |
-| 14 | 0.581 | 0.533 | 0.590 | 0.535 |
-| 13 | 0.486 | 0.511 | 0.484 | 0.511 |
-| 12 | 0.653 | 0.637 | **0.712** | **0.711** |
-| 11 | 0.617 | 0.593 | **0.692** | 0.673 |
-| 10 | 0.597 | 0.586 | 0.598 | 0.585 |
-| 8 | 0.585 | 0.580 | 0.592 | 0.591 |
-| 1 | 0.631 | 0.617 | 0.596 | 0.544 |
-| 0 | 0.619 | 0.589 | 0.613 | 0.574 |
-| others | ~0.50 | ~0.50 | ~0.50 | ~0.50 |
-
-Rendering the bit-15 plane as a 320x200 bitmap shows **genuine picture content**:
-in half A a bright horizontal band across the lower third (a lit floor), a
-distinct bright blob, and blocky highlights along the top edge. Different scenes
-show different content in the same plane. This is not noise.
-
-So the data really is laid out 320 pixels per row, and something image-shaped is
-in there. Two further facts constrain it:
-
-* **Half A is predominantly bit15 = 0; half B is predominantly bit15 = 1.**
-  Consistent with half A being colour (a mostly dark scene keeps the red MSB
-  low) and half B being depth (mostly distant geometry keeps values high).
-  Half A mean 21,481, half B mean 49,909, each with about 22,000 distinct
-  values out of 64,000 samples.
-* **Different scenes agree far more in half B than in half A.** Block-by-block
-  agreement between scenes 0 and 1 runs 0.01-0.05 through half A and 0.11-0.13
-  through half B, which is what you would expect from two camera views of the
-  same set sharing depth structure.
-
-The puzzle is that bits 14 and 13 are near random while bit 15 is strongly
-correlated. In a straightforward dithered RGB16 image the whole top of the red
-channel would correlate, decaying gradually toward the LSB. It does not. Some
-per-pixel transform sits between the stored value and the displayed colour.
-
-## 7.6 Next step: stop guessing, read the code
-
-The empirical search has been taken about as far as it usefully goes. The
-authoritative answer is on the disc.
-
-**Track 2 is the complete resident game binary** — 282,080 bytes, ending with
-`ATARI APPROVED DATA TAILER ATRI`. It contains all the UI text in English,
-French and German (inventory screen, joypad reconfigure, save/load menu, disc
-error messages), the string `HIGHLANDER ONE`, and tagged sections such as a
-`CODE` block at offset `0x125C0`. It also confirms that the retail build
-addresses data by **four-character tags** (`move.l #'CODE',d1`) rather than the
-numeric data types of the July source.
-
-Plan:
-
-1. Disassemble the 68000 boot code (capstone supports M68K) and find the scene
-   load path.
-2. Locate the GPU module headers inside it — in the July source these are a long
-   holding a GPU RAM address (`$F03000` upward) followed by a size.
-3. Write a small Jaguar GPU disassembler. The ISA is 16-bit and regular, so this
-   is a modest amount of work, and the project will need it repeatedly.
-
-A useful fallback if that stalls: run the game in an emulator and dump the scene
-buffers from RAM after a camera change. The decoded backdrop and Z-buffer land
-in `Scenea`/`ZBuffa`, so a memory dump gives ground truth to work backwards from.
+**The lesson worth keeping: entropy 7.8 bits/byte with a strongly non-uniform
+byte histogram is the signature of a repeating XOR, not of a codec.** That
+combination was in the session-2 measurements and should have pointed here a
+session earlier.

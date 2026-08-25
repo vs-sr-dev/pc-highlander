@@ -55,12 +55,14 @@ Extractors for scenes (backdrop plus Z), cinepaks, models, animations, sets,
 character sheets and sounds. Output into `assets/` with a JSON manifest named
 from `CDLINK.INC` / `DATA.INC` / `WORLD.INC`.
 
-Settled so far: the Jaguar 16-bit pixel layout (R5 B5 G6, **not** RGB565), the
-exact scene slot layout (672 scenes of 110 blocks, 256,000 bytes of fixed-size
-data plus a 48-byte camera footer in s1.14), and the camera footer itself.
-Open: the per-pixel encoding of the backdrops. It is not a plain raster in any
-byte order, width or interleaving tried, yet the bit-15 plane clearly carries
-picture content — see [07-scene-format.md](07-scene-format.md).
+Done: the **scenes** — all 672 backdrops and Z-buffers extract as PNG
+([07-scene-format.md](07-scene-format.md)); the **localised text** in three
+languages; the **film inventory**; the identity and record formats of every data
+track but one ([06-jcd-format.md](06-jcd-format.md)).
+
+Open: the model and animation extractors. The record layout is verified but the
+shipped facet list is 16 bytes per facet against the 20 of the July source, and
+that has to be resolved first. Track 9 is still unidentified.
 
 **Success criteria:** backdrops open as PNG; the wine-bottle model extracted
 from the CD matches `MERLOT79.INC` in the source.

@@ -3,10 +3,13 @@
 A native PC reimplementation of **Highlander: The Last of the MacLeods**
 (Lore Design Ltd. / Atari Corp., Jaguar CD, 1995).
 
-> **Status: phase 2 in progress.** The `.jcd` container is decoded and the retail
-> disc layout is mapped. The scene slot layout, the camera footer and the Jaguar
-> 16-bit pixel format are settled. The per-pixel encoding of the backdrops is
-> still open — see [docs/07-scene-format.md](docs/07-scene-format.md).
+> **Status: phase 2 in progress.** The `.jcd` container is decoded, the retail
+> disc layout is mapped, and the **backdrops are open**: all 672 scenes and their
+> Z-buffers extract as PNG. The scene payload turned out to be XORed with an
+> 8 KB key held in the game binary — read out of the shipped code with the new
+> 68000 and Jaguar-GPU disassemblers. See
+> [docs/07-scene-format.md](docs/07-scene-format.md) and
+> [docs/08-code-and-gpu.md](docs/08-code-and-gpu.md).
 
 ---
 
@@ -53,15 +56,34 @@ Z-buffer**, plus **Cinepak** full-motion video and **Red Book** CD audio.
 | [docs/04-cd-and-assets.md](docs/04-cd-and-assets.md) | How the game addresses the CD, and the asset extraction plan |
 | [docs/05-roadmap.md](docs/05-roadmap.md) | Porting strategy and phased roadmap |
 | [docs/06-jcd-format.md](docs/06-jcd-format.md) | The `.jcd` container format and the retail disc layout |
-| [docs/07-scene-format.md](docs/07-scene-format.md) | Scene track layout and the Jaguar 16-bit pixel format |
+| [docs/07-scene-format.md](docs/07-scene-format.md) | Scene format: slot layout, pixel format, the XOR obfuscation |
+| [docs/08-code-and-gpu.md](docs/08-code-and-gpu.md) | Inside the retail binary: boot chain, memory map, GPU modules |
+| [docs/09-text-and-fmv.md](docs/09-text-and-fmv.md) | The localised text and the Cinepak films |
 | [docs/sessions/](docs/sessions/) | Work log, one note per session |
 
 ## Tools
 
 ```
-python tools/jcd/jcdinfo.py <image.jcd>                 list tracks
-python tools/jcd/jcdinfo.py <image.jcd> --extract DIR   extract de-swapped tracks
-python tools/jcd/jcdinfo.py <image.jcd> --hex 7 0 256   hex dump a track
+python tools/jcd/jcdinfo.py <image.jcd>                     list tracks
+python tools/jcd/jcdinfo.py <image.jcd> --extract DIR       extract de-swapped tracks
+```
+
+`--extract` writes one file per track, de-swapped and with the header stripped.
+Everything below works on those files.
+
+```
+# all 672 backdrops and Z-buffers as PNG
+python tools/scene/scenex.py DIR/track04_pict.bin --boot DIR/track02_00004000.bin --out assets/scenes --depth
+
+# the item text, English / French / German
+python tools/text/textx.py DIR/track02_00004000.bin --format tsv
+
+# the 36 Cinepak films
+python tools/cinepak/filmls.py DIR/track07_1111.bin --tsv
+
+# the game code, and one GPU module
+python tools/m68k/dis68k.py DIR/track02_00004000.bin --off 0x12600 --base 0x5000 --len 0x30000 --entry 0x5000 --out code.asm
+python tools/gpu/disgpu.py DIR/track02_00004000.bin --off 0x36e98 --header
 ```
 
 ## Credits for the original

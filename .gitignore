@@ -37,3 +37,7 @@ cmake-build-*/
 Thumbs.db
 desktop.ini
 *.swp
+
+# Python
+__pycache__/
+*.pyc
