@@ -4,6 +4,7 @@ numpy and Pillow, the disassemblers need capstone.
 ```
 jcd/jcdinfo.py       read a .jcd disc image: list, hex-dump, extract tracks
 scene/scenex.py      backdrops and Z-buffers off the PICT track, as PNG
+model/modelx.py      polygon models: list, OBJ export, quick PNG preview
 text/textx.py        the localised item text, English / French / German
 cinepak/filmls.py    inventory of the films on the FMV track
 m68k/dis68k.py       recursive-descent 68000 disassembler (capstone)

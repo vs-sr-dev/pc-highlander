@@ -178,6 +178,65 @@ comment: `COLOURmerlot791 .equ $9a5e ; BEIGE MATTE r=155, g=122, b=74`. That
 RGB-to-16-bit mapping is a useful cross-reference for pinning down the CRY/RGB
 encoding in use.
 
+### Verified against the retail disc
+
+The format did not change between July and release. Reference implementation:
+[tools/model/modelx.py](../tools/model/modelx.py), which finds models by
+checking `FLP == VLP + (vertices + origins) * 8` and then walking the facet list
+to where the declared length says it should end. That predicate finds **220
+models on track 5** and **19 linked into the resident binary**, with no false
+positives.
+
+Three things the shipped data settles:
+
+* **The facet is 12 bytes plus `noofWords * 4`.** A triangle or quad is 16 bytes
+  in total. The `noofWords` field counts longs of vertex indices, not bytes.
+* **`SLP`, when non-zero, points at the byte right after the facet list**, and
+  the length in the header covers that payload too. 140 of track 5's 220 models
+  carry one, 8 to 88 bytes, always a multiple of 8. `CLP` is zero on every model
+  seen. What the SLP payload holds is still open.
+* **The vertex list holds `vertices + origins` entries** — the origin points
+  follow the vertices proper and are not drawn.
+
+### The item models are in the binary, not on the disc tracks
+
+July's `BO_MODEL_*` list has 26 entries and they are all characters and set
+pieces — Quentin, the hunters, Kortan, the hand, the water, the grinder, the
+tank, the turret. The **items are not there**. They are linked into the resident
+game binary instead, as a contiguous run of 19 models from `$00E1F8` to
+`$0153E8`, and eight of them match the surviving source files exactly:
+
+| linked at | verts | faces | source |
+|---|---:|---:|---|
+| `$00EBA0` | 21 | 34 | `HSWORD_Q.INC` — Quentin's sword |
+| `$00EE98` | 65 | 108 | `GASGUN.INC` |
+| `$010140` | 109 | 83 | `CHEESE.INC` |
+| `$010A10` | 61 | 86 | `LOAF.INC` |
+| `$011190` | 40 | 60 | `MERLOT79.INC` — the wine bottle |
+| `$0116C8` | 39 | 78 | `HKEY.INC` |
+| `$011D08` | 48 | 50 | `LOCKET.INC` / `HLOCKET.INC` |
+| `$0121D8` | 30 | 40 | `HWATAWEE.INC` |
+
+"Match" here means **every facet is byte-identical** — colour, normal, vertex
+count and vertex indices, all 60 of the bottle's and all 108 of the gas gun's.
+
+### Axis convention: the models are Z up
+
+The one thing that did change is the vertex data. Fitting the shipped bottle
+against the floating-point coordinates in `MERLOT79.INC` gives an affine map
+with a **maximum residual of 0.72** — that is pure integer rounding, so the fit
+is exact:
+
+```
+shipped.x =  0.2754 * source.X +  0.49
+shipped.y =  0.2907 * source.Z -  8.79
+shipped.z =  0.2999 * source.Y - 18.99
+```
+
+So the retail exporter **swapped Y and Z** and rescaled by roughly 0.28, while
+leaving the facet list — which indexes vertices, not coordinates — untouched.
+Source Y was the up axis in 3D Studio; on the disc **Z is up**.
+
 ---
 
 ## 3.4 Animations

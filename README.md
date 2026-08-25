@@ -9,7 +9,9 @@ A native PC reimplementation of **Highlander: The Last of the MacLeods**
 > 8 KB key held in the game binary — read out of the shipped code with the new
 > 68000 and Jaguar-GPU disassemblers. See
 > [docs/07-scene-format.md](docs/07-scene-format.md) and
-> [docs/08-code-and-gpu.md](docs/08-code-and-gpu.md).
+> [docs/08-code-and-gpu.md](docs/08-code-and-gpu.md). The models extract too, and
+> the wine bottle from the disc is facet-for-facet the `MERLOT79.INC` in the
+> 1995 source.
 
 ---
 
@@ -77,6 +79,9 @@ python tools/scene/scenex.py DIR/track04_pict.bin --boot DIR/track02_00004000.bi
 
 # the item text, English / French / German
 python tools/text/textx.py DIR/track02_00004000.bin --format tsv
+
+# the models: 19 in the binary (the items), 220 on track 5 (characters)
+python tools/model/modelx.py DIR/track02_00004000.bin --obj assets/models --png assets/models
 
 # the 36 Cinepak films
 python tools/cinepak/filmls.py DIR/track07_1111.bin --tsv

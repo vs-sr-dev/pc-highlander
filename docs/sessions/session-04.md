@@ -66,6 +66,27 @@ Details in [07-scene-format.md](../07-scene-format.md) and
   track *n* + 2 — confirmed at the one call site that names a type, the Cinepak
   player asking for type 5.
 
+## The models, later the same session
+
+**The second phase-2 criterion is met.** The wine bottle is on the disc and it
+is `MERLOT79`: all 60 facets byte-identical to the source — colour, normal,
+vertex count, vertex indices. Seven more source models match the same way
+(§3.3). 239 models extracted in total, as OBJ with materials.
+
+Two things had to be understood first:
+
+* The item models are **not** on a data track. July's `BO_MODEL_*` list is all
+  characters and set pieces; the items are linked into the resident binary, 19
+  of them in a run from `$00E1F8`.
+* The facet is 12 bytes plus `noofWords * 4`, so 16 for a triangle or a quad —
+  the earlier note in this file claiming a 20-byte July facet against a 16-byte
+  shipped one was simply a misreading; both are 16.
+
+And one fact the port needs: the retail exporter **swapped Y and Z**. Fitting
+the shipped bottle against the floating-point coordinates in the source gives an
+affine map with a maximum residual of 0.72 — integer rounding, nothing else. On
+the disc, **Z is up**.
+
 ## Still open
 
 * **Track 9.** 55,188 bytes of 7.996-bits/byte payload followed by the long
@@ -77,21 +98,22 @@ Details in [07-scene-format.md](../07-scene-format.md) and
   `CDLINK.INC` still names the sets.
 * **The scene id at footer +0** — unique and increasing across all 672, with
   gaps. Mapping ids to sets would give every backdrop a name.
-* **The facet list.** §3.3 describes July's 20-byte facet; the shipped models
-  measure 16 bytes per facet (896 bytes for 56 facets). The difference needs
-  pinning down before models can be rendered.
+* **The `SLP` payload.** 140 of track 5's 220 models carry 8 to 88 bytes after
+  the facet list, always a multiple of 8. Its meaning is unknown.
+* Eleven of the nineteen models linked into the binary are unidentified — the
+  eight with surviving source files are named, the rest are not.
 * Eighteen of the twenty-one GPU modules are still unidentified.
 
 ## TODO for next session
 
-1. **Write the model and animation extractors** and render the wine bottle from
-   the CD against `MERLOT79.INC`. That is the remaining phase-2 success
-   criterion, and it needs the 16-byte facet layout resolved first — the model
-   with 39 vertices and 56 facets in track 5 slot 0 is a good specimen.
+1. **Animations.** The extractor is the obvious companion to `modelx`; the
+   record format is already verified (§3.4) and the frame layout is 20 bytes
+   plus three angle bytes per piece.
 2. **Parse the set event lists** on track 3. It gives the film names, the
    scene-to-set mapping, and the event model the port will need anyway.
 3. **Track 9**: find the loader for type `$27`. Widening `dis68k` coverage past
    the current 8% (it stops at jump tables) is probably the way in.
-4. Decode the `STAB` sample format so the film audio can be extracted.
-5. Name more GPU modules — the 3D engine and the compositor are among them, and
+4. Work out what the `SLP` payload on 140 of the models is.
+5. Decode the `STAB` sample format so the film audio can be extracted.
+6. Name more GPU modules — the 3D engine and the compositor are among them, and
    the port will want to know exactly what they did.
