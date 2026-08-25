@@ -3,15 +3,15 @@
 A native PC reimplementation of **Highlander: The Last of the MacLeods**
 (Lore Design Ltd. / Atari Corp., Jaguar CD, 1995).
 
-> **Status: phase 2 in progress.** The `.jcd` container is decoded, the retail
-> disc layout is mapped, and the **backdrops are open**: all 672 scenes and their
-> Z-buffers extract as PNG. The scene payload turned out to be XORed with an
-> 8 KB key held in the game binary — read out of the shipped code with the new
-> 68000 and Jaguar-GPU disassemblers. See
-> [docs/07-scene-format.md](docs/07-scene-format.md) and
-> [docs/08-code-and-gpu.md](docs/08-code-and-gpu.md). The models extract too, and
-> the wine bottle from the disc is facet-for-facet the `MERLOT79.INC` in the
-> 1995 source.
+> **Status: phase 2, both success criteria met.** All 672 backdrops and their
+> Z-buffers extract as PNG — the scene payload turned out to be XORed with an
+> 8 KB key held in the game binary, read out of the shipped code with the new
+> 68000 and Jaguar-GPU disassemblers. The models extract too, and the wine bottle
+> from the disc is facet-for-facet the `MERLOT79.INC` in the 1995 source. Also
+> out: 285 animations, the 48 sets with their collision meshes and event lists,
+> and the item text in three languages. Every backdrop can be named from the disc
+> data. Still to write: the script VM, and extractors for the sampled audio and
+> the character sheets.
 
 ---
 
