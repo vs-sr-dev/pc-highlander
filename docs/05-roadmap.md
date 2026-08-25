@@ -68,9 +68,14 @@ tables, doorways, collision meshes and event lists
 carries the puzzle and cutscene logic and places 32 of the 36 films
 ([11-script-vm.md](11-script-vm.md)).
 
-Still to write: extractors for the character sheets and the sampled sounds, and
-the JSON manifest that names everything from `CDLINK.INC` / `DATA.INC` /
-`WORLD.INC`. Track 9 is still unidentified.
+And the **audio**: the `WAVE` sound-effect bundles on tracks 5 and 6 (78 of
+them, 98.7 seconds) and the **dialogue**, which is interleaved with the video
+inside the films — 18 minutes 23 seconds of it, extracted through the `STAB`
+sample table ([09-text-and-fmv.md](09-text-and-fmv.md) §9.3).
+
+Still to write: an extractor for the character sheets, and the JSON manifest
+that names everything from `CDLINK.INC` / `DATA.INC` / `WORLD.INC`. Track 9 is
+still unidentified.
 
 **Success criteria:** backdrops open as PNG; the wine-bottle model extracted
 from the CD matches `MERLOT79.INC` in the source.

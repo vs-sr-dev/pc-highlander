@@ -87,10 +87,9 @@ tracks themselves use — followed by:
 So **the films carry interleaved audio**, and that answers where the speech
 went. The July build addressed 88 spoken lines as Red Book audio on a dedicated
 track (`BO_CDAUDIO_LINE005` .. `LINE100`); the retail disc has no such track. The
-sampled-audio tracks cannot be hiding it either — track 6 holds 38 `WAVE`
-bundles and track 5 another 36, about 98 seconds in total at 22 kHz 8-bit, which
-is a sound-effect budget, not a dialogue budget. The FMV, by contrast, is
-roughly 100 MB of chunks with a sample table in every one.
+sampled-audio tracks cannot be hiding it either — 78 `WAVE` bundles across
+tracks 5 and 6, 98.7 seconds in total, which is a sound-effect budget, not a
+dialogue budget. The films hold **18 minutes 23 seconds**.
 
 The boot sequence plays **film 34**, at block 94,340 (`$17084`, the constant
 written to the film-offset variable `$44BC` at `$5212`). It is one of the two
@@ -101,11 +100,47 @@ python tools/cinepak/filmls.py TRACK7 --tsv
 python tools/cinepak/filmls.py TRACK7 --chunks 34
 ```
 
-### Still open: which film is which
+## 9.3 The film audio
+
+An entry in a chunk's `STAB` is sixteen bytes — offset, size, timestamp, type —
+and two types occur:
+
+| type | what | offset means |
+|---:|---|---|
+| `$32` | a video frame | where it **starts**; the timestamp counts the film's own ticks, and bit 31 is a flag |
+| `1` | an audio block | where it **ends** — the block is `[offset - size, offset)` |
+
+Both are measured from the first byte after the sample table. Every audio block
+on the disc is 16,696 bytes, and the audio is **signed 8-bit mono PCM**.
+
+The rate is `audio_in` in `CINEPAK.INC`, **22,252 Hz**, and the disc bears that
+out. A one-second chunk normally carries one audio block and every third carries
+two, so the long-run rate is `16,696 * 4/3` = 22,261 bytes a second; measured
+over the longest films — 173 and 100 chunks — the figure comes to 21,900 and
+22,250. Short films read low because the two blocks of prefetch at the head and
+the missing block on the tail chunk weigh more.
+
+`CTAB`'s `rate` field is the film's tick rate: 600 for 34 of the 36 films, but
+films 5 and 6 use 24 and 30. Frames land 50 ticks apart at rate 600, i.e. **12
+fps** throughout.
+
+**The reassembly is verified, not assumed.** Concatenating film 9's 227 audio
+blocks in `STAB` order gives a signal whose mean absolute sample-to-sample step
+across the block joins is 2.55, against 2.50 inside the blocks — the joins are
+invisible. Shuffling the same blocks raises it to 6.93.
+
+```
+python tools/cinepak/filmwav.py TRACK7 --out assets/filmaudio
+```
+
+35 of the 36 films carry sound; film 16, five chunks long, is silent.
+
+## 9.4 Which film is which
 
 The 20 names in July's `DATA.INC` are alphabetical and the block offsets all
-moved, so the names cannot be mapped by position. The workable route is through
-the set data: track 3 carries each set's event list (`EventOffset` in the set
-header), `EVENT_TYPE_CINEPAK` events name a film by block offset, and July's
-`CDLINK.INC` still names the sets. Matching a film to the set that triggers it
-would name most of them by context.
+moved, so the names cannot be mapped by position. The route through the data
+works: session 5 disassembled the script VM, and every `cinepak` command names a
+film by block offset. Together with the three `CINEPAK` events and the boot
+film, that places **33 of the 36** — see [11-script-vm.md](11-script-vm.md)
+§11.7 for the table and for the four that are named by what the code does with
+them. Films 15, 28 and 33 still have no trigger anywhere on the disc.

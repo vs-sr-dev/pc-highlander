@@ -108,8 +108,12 @@ preceded by a long holding its length, each slot starting a new record:
   satisfies `size = 14 + framesize * frames` with `framesize = 20 + 3 * models`
   rounded up to even, which for the fifteen pieces every character has means 66.
   20 fps throughout. **285 on track 5 and 42 on track 8**, 570 seconds in total.
-* **waves** — `long total; 'WAVE'; long size; 8-bit samples`. Nine slots of
-  track 5 and all 38 slots of track 6.
+* **waves** — `long total; 'WAVE'; long size; signed 8-bit samples`, where
+  `total` is `size + 8` rounded up to a multiple of four. All 38 slots of
+  track 6 hold one record each; on track 5 the **odd** slots 1 to 17 and slot 28
+  hold **four each**, which is the four combat sounds `STRUCDEF.INC` gives a
+  character — `soundKIA`, `soundHIT`, `soundATT`, `soundPAR`. 78 waves in all,
+  98.7 seconds. See [tools/wave/wavex.py](../tools/wave/wavex.py).
 
 Fifteen models per character and fifteen animated pieces per animation is the
 same number seen from two sides, which is a good cross-check on both readings.
@@ -130,6 +134,34 @@ shift from 1 to 20,000 was tested, peak coincidence 0.0051 against a 0.0039
 baseline — and it is not XORed with the scene key. Its 64-byte content tag is
 high-entropy as well, so even the tag is scrambled. It is compressed or
 encrypted; no code asking for type `$27` has been found yet.
+
+Session 5 added four results, all negative, and one that reframes the search:
+
+* **The track header is intact; only the tag and the payload are scrambled.**
+  The 64-byte `ATRI` lead-in and the 32-byte `ATARI APPROVED DATA HEADER` with
+  its type byte read normally on the disc. Whatever happened to this track began
+  at offset 96, where the 4-character content tag should be.
+* **The tag is not a plaintext tag under a byte-wise cipher keyed on the game
+  binary.** Every other track's tag is one 4-byte value repeated sixteen times.
+  For a byte-wise XOR or additive cipher that gives a known relation that does
+  not need the tag's value: `ct[i] op ct[i+4]` must equal `k[i] op k[i+4]` for
+  the first 60 bytes. No 64-byte window anywhere in the 282,240-byte resident
+  binary satisfies it, under either operation; the best partial match is 5 bytes
+  out of 60, which is chance.
+* **The payload is unique on the disc** — a 24-byte sample of it occurs exactly
+  once in the whole 456 MB image, so it is not a stale copy of another track's
+  data.
+* Its statistics are those of random data: chi-square 291 on 255 degrees of
+  freedom, and **not one 4-byte sequence repeats** in 55,185 overlapping
+  positions. So the plaintext, if there is one, is not the sparse, zero-filled
+  kind the other data tracks hold.
+
+The search for the loader should probably be reframed. `sub_007E9E`, the routine
+that turns a data type into a track, has **exactly one call site** in the whole
+binary — `$866A`, asking for type 5, the Cinepak track. Every other read on the
+disc goes through the block number in `$4494` with a base computed elsewhere, so
+there is no "ask for type 7" call to find; the question is which code path could
+ever compute a block inside track 9, and none has turned up.
 
 Entropy per data track: track 3 measures 0.28 bits/byte (97% zero fill), track 5
 3.23, track 6 3.20, track 8 1.84 — all plainly raw. Track 4 measures 7.81 to

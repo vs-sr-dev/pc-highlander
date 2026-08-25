@@ -1,9 +1,11 @@
-# Session 5 — The script VM opens, and with it the films
+# Session 5 — The script VM opens, and the audio with it
 
 The biggest thing left on the disc was the bytecode at `ScriptOffset`. It is
-open. Twenty-seven sets have a script, plus a resident one in the binary;
-**1,173 commands decode with nothing left over**, and every film reference in
-them lands on a real film.
+open: twenty-seven sets have a script, plus a resident one in the binary, and
+**1,173 commands decode with nothing left over**, every film reference in them
+landing on a real film. The audio came out too — the 78 sound-effect bundles,
+and the **dialogue**, which turned out to be interleaved with the video inside
+the films. Eighteen minutes of it.
 
 ---
 
@@ -123,14 +125,82 @@ by four and indexes a pointer table at `$24F70` holding
 `DAS HIER KANNST DU NICHT BENUTZEN.` — so 0 English, 1 French, 2 German, the
 order `textx` already uses, written by the LANG set's script.
 
+## 7. The audio, all of it
+
+Both remaining sound extractors landed, and between them they close the audio
+side of phase 2.
+
+**Sound effects.** `WAVE` records are `long total; 'WAVE'; long size; signed
+8-bit samples`, with `total` = `size + 8` **rounded up to a multiple of four** —
+which is why the first walk of the chain stopped after one record per slot. All
+38 slots of track 6 hold one record; on track 5 the odd slots 1 to 17 and slot
+28 hold **four each**, and four is exactly the number of combat sounds
+`STRUCDEF.INC` gives a character: `soundKIA`, `soundHIT`, `soundATT`,
+`soundPAR`. 78 waves, 98.7 seconds.
+
+The rate comes out of `WAVE.DAS`, which drives the player off timer 1 with
+`JPIT1 = 1` and `JPIT2 = $25A`: `26,590,906 / (2 * 603)` = **22,048 Hz**.
+`SCLK = 19` in the same routine sets the I2S bit clock, not the sample rate.
+
+**The dialogue.** It is inside the films, and the `STAB` table in each chunk
+says where. The entry layout session 4 guessed at is right, and the two types
+mean different things:
+
+* type `$32` is a video frame and `offset` is where it **starts**;
+* type `1` is an audio block and `offset` is where it **ends** — the block is
+  `[offset - size, offset)`, and every one on the disc is 16,696 bytes.
+
+The audio is signed 8-bit mono PCM at `audio_in` from `CINEPAK.INC`, **22,252
+Hz**. The disc agrees: a one-second chunk carries one audio block and every
+third carries two, so the long-run rate is `16,696 * 4/3` = 22,261 bytes a
+second, and measured over the two longest films it comes to 21,900 and 22,250.
+
+**And it is verified, not assumed.** Concatenating film 9's 227 blocks in `STAB`
+order gives a signal whose mean absolute sample-to-sample step *across the block
+joins* is 2.55, against 2.50 inside the blocks — the seams are invisible.
+Shuffling the same blocks raises it to 6.93.
+
+**18 minutes 23 seconds** of film audio, across 35 of the 36 films; film 16, five
+chunks long, is silent. That is the dialogue budget July spent on 88 Red Book
+lines, and it was hiding in the video all along.
+
+→ [tools/wave/wavex.py](../../tools/wave/wavex.py),
+[tools/cinepak/filmwav.py](../../tools/cinepak/filmwav.py),
+[09-text-and-fmv.md §9.3](../09-text-and-fmv.md)
+
+## 8. Track 9, still shut, but better bounded
+
+Four new results, all negative, and one that reframes the search:
+
+* The track's **header is intact** — the `ATRI` lead-in and the
+  `ATARI APPROVED DATA HEADER` with its type byte read normally. Whatever
+  happened began at offset 96, where the content tag should be.
+* Every other track's tag is one 4-byte value repeated sixteen times, which
+  gives a known-plaintext test that does not need the tag's value: under a
+  byte-wise XOR or additive cipher, `ct[i] op ct[i+4]` must equal
+  `k[i] op k[i+4]` for 60 bytes. **No 64-byte window in the entire resident
+  binary satisfies it**, under either operation. Best partial match: 5 of 60,
+  which is chance.
+* A 24-byte sample of the payload occurs **exactly once in the 456 MB image**, so
+  it is not a stale copy of something else on the disc.
+* Chi-square 291 on 255 degrees of freedom, and **not one 4-byte sequence
+  repeats** in 55,185 overlapping positions. The plaintext is not the sparse,
+  zero-filled kind the other data tracks hold.
+
+The reframing: `sub_007E9E`, the data-type-to-track routine, has **exactly one
+call site** in the whole binary, asking for type 5, the Cinepak track. Every
+other read goes through the block number in `$4494` with its base computed
+elsewhere, so there is no "ask for type 7" call to go looking for. The question
+is which code path could ever compute a block inside track 9.
+
 ---
 
 ## Still open
 
 * **Track 9.** Unchanged from session 4: 55,188 bytes of high-entropy payload, no
   loader found for data type `$27`.
-* **Film audio.** `STAB` still undecoded; that is where the speech is.
-* **The four unreferenced films** — 15, 28, 33, 34.
+* **Three unreferenced films** — 15, 28 and 33. Film 34 is the boot sequence,
+  played from the 68000.
 * **The world-state table.** Scripts address entries by number and July's
   `WORLD.INC` names 116 of them, but the retail table has more and the indices
   have drifted: `CA_TURRET_KEY` is 6 in both, `CODE_HAND` is 43 in July and 74
@@ -146,20 +216,14 @@ order `textx` already uses, written by the LANG set's script.
 
 ## TODO for session 6
 
-1. **The waves extractor.** The format is known — `long total; 'WAVE'; long
-   size; 8-bit samples` — 38 bundles on track 6 and 36 on track 5. An hour's
-   work, and it finishes the sound-effect side.
-2. **`STAB`.** Decode the sample table interleaved with each Cinepak chunk;
-   16-byte entries (offset, size, timestamp, type), types 1 and `$32` seen,
-   rates from `CINEPAK.INC`. This is the dialogue.
-3. **The world-state table.** Find where the retail `ws` at `$32660` is filled
+1. **The world-state table.** Find where the retail `ws` at `$32660` is filled
    from. If it is a linked table in the binary like the item models were, every
    character and object in every script gets a name, and the scripts stop being
    anonymous.
-4. **The manifest.** One JSON tying scenes, sets, models, animations, films and
+2. **The manifest.** One JSON tying scenes, sets, models, animations, films and
    now scripts together. It is the stated phase-2 deliverable and everything it
    needs now exists.
-5. **Track 9**, still by widening `dis68k`'s recursion through the jump-table
+3. **Track 9**, still by widening `dis68k`'s recursion through the jump-table
    idiom at `$50A6`, or by emulator.
-6. **Then phase 3** — the SDL3 viewer. Carry over: models are **Z up**, pixels
+4. **Then phase 3** — the SDL3 viewer. Carry over: models are **Z up**, pixels
    are **R5 B5 G6**.

@@ -127,7 +127,7 @@ OPS = [
     ("random",    "reg_range"),  # 76  reg = random, scaled to 1..oper
     ("getglobal", "reg_idx"),    # 77  reg = globalreg[oper]
     ("setbitreg", "bit01reg"),   # 78  setbit, bit number from a register
-    ("wavestop",  "none"),       # 79  posts command 4 to the DSP wave player
+    ("waveexit",  "none"),       # 79  posts waveExit to the DSP wave player
     ("andi",      "andi"),       # 80  reg &= immediate
     ("waitkey",   "waitkey"),    # 81  wait for one pad key, branch on another
     ("gvar",      "gvar"),       # 82  read/write the global variable block

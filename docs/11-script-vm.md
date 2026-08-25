@@ -122,7 +122,7 @@ Named here from the shipped handlers; July has no source for them.
 | 76 | `random` | steps a 32-bit seed at `$4E18`, scales the result to `1..oper` when the operand is non-zero, writes it to the register |
 | 77 | `getglobal` | reads `gvar[oper]` — the long array at `$4DF4`, shared by all processes — into the register |
 | 78 | `setbitreg` | `setbit` with the bit number taken from the register; falls straight into the `setbit` handler |
-| 79 | `wavestop` | writes command 4 to the DSP wave interface at `$F1B390` (`wavePlay` is 1) |
+| 79 | `waveexit` | writes function code 4 to the DSP wave interface at `$F1B390`, which is `waveExit` in `WAVE.INC` — it shuts the sample player down, and every use is immediately before a film or a `reset` |
 | 80 | `andi` | ANDs the register with an immediate, word or long |
 | 81 | `waitkey` | in mode 0, waits for one pad bit pressed **alone**, and quits to `pc + (operand >> 5)` if a different key is pressed; in mode ≠ 0, waits until nothing is pressed |
 | 82 | `gvar` | byte / word / long read or write of the variable block at `$4E14`, which is `gvar[8]` of the same array `getglobal` walks |
@@ -267,7 +267,7 @@ the track-7 inventory **exactly**, in all 36 script sites and all three
 | 31 | 89645 | 4353 | NEOSW script |
 | 32 | 91596 | 4530 | NEOSW script |
 | 33 | 93625 | 1513 | — |
-| 34 | 94340 | 14851 | — |
+| 34 | 94340 | 14851 | the boot sequence, from the 68000 (§9.2) |
 | 35 | 100863 | 2771 | CA script |
 
 Four films have no trigger on the disc: 15, 28, 33 and 34. Three of them are

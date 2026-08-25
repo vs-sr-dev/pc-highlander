@@ -3,17 +3,18 @@
 A native PC reimplementation of **Highlander: The Last of the MacLeods**
 (Lore Design Ltd. / Atari Corp., Jaguar CD, 1995).
 
-> **Status: phase 2 complete, and the script VM is open.** All 672 backdrops and their
-> Z-buffers extract as PNG — the scene payload turned out to be XORed with an
-> 8 KB key held in the game binary, read out of the shipped code with the new
-> 68000 and Jaguar-GPU disassemblers. The models extract too, and the wine bottle
-> from the disc is facet-for-facet the `MERLOT79.INC` in the 1995 source. Also
-> out: 285 animations, the 48 sets with their collision meshes and event lists,
-> and the item text in three languages. Every backdrop can be named from the disc
-> data. The game's puzzle and cutscene logic is bytecode for a GPU virtual
-> machine, and all 1,173 commands of it now disassemble — which places 32 of the
-> 36 films. Still to write: extractors for the sampled audio and the character
-> sheets.
+> **Status: phase 2 complete; the script VM and the audio are open.** All 672
+> backdrops and their Z-buffers extract as PNG — the scene payload turned out to
+> be XORed with an 8 KB key held in the game binary, read out of the shipped code
+> with the new 68000 and Jaguar-GPU disassemblers. The models extract too, and
+> the wine bottle from the disc is facet-for-facet the `MERLOT79.INC` in the 1995
+> source. Also out: 327 animations, the 48 sets with their collision meshes and
+> event lists, and the item text in three languages. Every backdrop can be named
+> from the disc data. The game's puzzle and cutscene logic is bytecode for a GPU
+> virtual machine, and all 1,173 commands of it now disassemble — which places 33
+> of the 36 films. The **dialogue** turned out to be interleaved with the video:
+> 18 minutes 23 seconds of it, plus 78 sound-effect bundles, all out as `.wav`.
+> Still to write: the character sheets and the phase-2 manifest.
 
 ---
 
@@ -93,8 +94,13 @@ python tools/anim/animx.py DIR/track05_data.bin --json assets/anims.json
 # the 48 sets: scene tables, doorways, collision meshes, events
 python tools/set/setx.py DIR/track03_data.bin --json assets/sets.json
 
-# the 36 Cinepak films
+# the 36 Cinepak films, and the audio interleaved in them
 python tools/cinepak/filmls.py DIR/track07_1111.bin --tsv
+python tools/cinepak/filmwav.py DIR/track07_1111.bin --out assets/filmaudio
+
+# the 78 sound-effect bundles
+python tools/wave/wavex.py DIR/track06_data.bin --out assets/waves
+python tools/wave/wavex.py DIR/track05_data.bin --out assets/waves
 
 # the scripts: 27 sets plus the resident MAINSCRIPT
 python tools/script/scriptx.py DIR/track03_data.bin --all --out assets/scripts
