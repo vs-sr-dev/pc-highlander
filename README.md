@@ -14,7 +14,8 @@ A native PC reimplementation of **Highlander: The Last of the MacLeods**
 > virtual machine, and all 1,173 commands of it now disassemble — which places 33
 > of the 36 films. The **dialogue** turned out to be interleaved with the video:
 > 18 minutes 23 seconds of it, plus 78 sound-effect bundles, all out as `.wav`.
-> Still to write: the character sheets and the phase-2 manifest.
+> The world-state table and the character sheets are out too — they were static
+> data in the binary all along. Still to write: the phase-2 manifest.
 
 ---
 
@@ -66,6 +67,7 @@ Z-buffer**, plus **Cinepak** full-motion video and **Red Book** CD audio.
 | [docs/09-text-and-fmv.md](docs/09-text-and-fmv.md) | The localised text and the Cinepak films |
 | [docs/10-set-track.md](docs/10-set-track.md) | The set track: scene tables, doorways, collision, events |
 | [docs/11-script-vm.md](docs/11-script-vm.md) | The script VM: encoding, opcodes, and what the scripts do |
+| [docs/12-world-and-sheets.md](docs/12-world-and-sheets.md) | The world-state table and the character sheets |
 | [docs/sessions/](docs/sessions/) | Work log, one note per session |
 
 ## Tools
@@ -93,6 +95,9 @@ python tools/anim/animx.py DIR/track05_data.bin --json assets/anims.json
 
 # the 48 sets: scene tables, doorways, collision meshes, events
 python tools/set/setx.py DIR/track03_data.bin --json assets/sets.json
+
+# the world state: 197 objects and characters, and 40 character sheets
+python tools/world/worldx.py DIR/track02_00004000.bin --json assets/world.json
 
 # the 36 Cinepak films, and the audio interleaved in them
 python tools/cinepak/filmls.py DIR/track07_1111.bin --tsv

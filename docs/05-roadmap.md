@@ -73,9 +73,12 @@ them, 98.7 seconds) and the **dialogue**, which is interleaved with the video
 inside the films — 18 minutes 23 seconds of it, extracted through the `STAB`
 sample table ([09-text-and-fmv.md](09-text-and-fmv.md) §9.3).
 
-Still to write: an extractor for the character sheets, and the JSON manifest
-that names everything from `CDLINK.INC` / `DATA.INC` / `WORLD.INC`. Track 9 is
-still unidentified.
+And the **world state**: the 197 objects and characters of the game, with the
+40 character sheets they wear, both static tables in the resident binary
+([12-world-and-sheets.md](12-world-and-sheets.md)).
+
+Still to write: the JSON manifest that names everything from `CDLINK.INC` /
+`DATA.INC` / `WORLD.INC`. Track 9 is still unidentified.
 
 **Success criteria:** backdrops open as PNG; the wine-bottle model extracted
 from the CD matches `MERLOT79.INC` in the source.

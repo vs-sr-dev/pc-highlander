@@ -132,9 +132,10 @@ them landing on a film exactly (§11.7).
 
 July's `CDLINK.INC` names 46 sets and 594 scenes, emitted in alphabetical order.
 The retail groups are in the same order, so the two lists align in a single
-monotone pass: **three insertions** (groups 19, 27 and 31 are sets added after
-July) and **one deletion** (`D2_12B`, a one-scene set folded into `D2`). Totals
-agree on both sides — 672 against 594.
+monotone pass. As it stands after session 5's corrections below, that pass has
+**three insertions** — groups 19, 27 and 28 are sets added after July, and so is
+31, `LANG` — and **two deletions**: `D2_12B`, a one-scene set folded into `D2`,
+and `DUN6`, which retail dropped altogether.
 
 Twenty-three groups are anchors, where the retail camera count equals July's
 exactly, and they are spread through the list: `C2 C3 CA CN4 CN5 CNY02 CNY03
@@ -164,11 +165,32 @@ naming does not depend on that — it comes from the id.
 | 29 | 30 `MENU` | the main menu: start game, credits, and a reset timeout |
 | 30 | 31 `LANG` | writes 0/1/2 to the language variable and leaves |
 
-That also names the third of the three post-July groups: **group 31 is `LANG`**,
-and its single scene decodes to "SELECT LANGUAGE / ENGLISH / FRANCAIS /
-DEUTSCHE" over the same stormy hill as the main menu. Groups 19 and 27 are still
-unnamed; 19 is a wooded garden reached from `DUN1`, `DUN4` and `G3`, and 27 is a
-33-scene cave system that connects to seven other sets.
+That also names one of the three post-July groups: **group 31 is `LANG`**, and
+its single scene decodes to "SELECT LANGUAGE / ENGLISH / FRANCAIS / DEUTSCHE"
+over the same stormy hill as the main menu.
+
+**Session 5 also checked the whole alignment against a second source and moved
+three entries.** The retail world-state table (§12) gives every object a
+`wstSet` field holding its group, and July's `WORLD.S` gives the same objects a
+`SCENE_<SET>_CAMnn` argument; pairing the two tables by exact coordinates makes
+28 July set names vote for a retail group, unanimously. Twenty-five agree with
+the camera-count pass. Three do not, and coordinates beat camera counts:
+
+| group | was | is |
+|---:|---|---|
+| 24 | `DUN6` | **`G1`** |
+| 25 | `G1` | **`G2`** |
+| 26 | `G2` | **`G3`** |
+| 28 | `G3` | *(added after July)* |
+
+`DUN5` keeps group 23, and **`DUN6` has no retail group at all** — a second
+deletion beside `D2_12B`. All three corrections land on entries this section had
+already flagged as carried-by-position rather than anchored.
+
+So the sets with no July counterpart are groups **19, 27, 28** and **31**
+(`LANG`). 19 is a wooded garden reached from `DUN1` and `DUN4`; 27 is a 33-scene
+cave system that connects to seven other sets; 28 has nine scenes and is the one
+group 19 also borrows a view from.
 
 ## 10.7 Using the tool
 

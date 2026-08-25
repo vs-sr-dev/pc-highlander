@@ -78,18 +78,28 @@ SCENE_STRIDE = 110          # blocks per scene on the PICT track
 # Retail scene-id group -> the set name July's CDLINK.INC used.  Derived by
 # aligning the 48 retail groups against the 46 named July sets by camera count:
 # the July list is alphabetical and the retail one is in the same order, so the
-# alignment is a single monotone pass with three insertions and one deletion.
-# A trailing "!" marks an anchor, where the retail camera count equals July's
-# exactly - 23 of the 48.  The rest are carried by their position between
-# anchors and should be treated as likely, not certain.  Groups 19, 27 and 31
-# have no July counterpart: they are sets added after July.  The totals check
-# out on both sides, 672 scenes against 594.
+# alignment is a single monotone pass.  A trailing "!" marks an anchor, where the
+# retail camera count equals July's exactly - 23 of the 48.
+#
+# Session 5 checked the whole table against a second, independent source.  The
+# retail world-state table (11-script-vm.md, 12-world-and-sheets.md) gives every
+# object a `wstSet` field holding its group, and July's `WORLD.S` gives the same
+# objects a `SCENE_<SET>_CAMnn` argument.  Aligning the two tables by exact
+# coordinates pairs 72 entries, and those pair 28 July set names with a retail
+# group **unanimously** - no set name votes for two groups, no group takes two
+# names.  Twenty-five agree with the camera-count alignment.  Three do not, and
+# the world table wins: G1, G2 and G3 are groups 24, 25 and 26, not 25, 26 and
+# 28.  That leaves DUN6 with no retail group at all - a second deletion beside
+# `D2_12B` - and makes groups 19, 27 and 28 the sets added after July, with 31
+# being LANG, which is new as well.  All three corrections land on entries the
+# camera-count pass had already flagged as position-carried rather than
+# anchored.
 GROUP_NAMES = {
     1: "C1", 2: "C2!", 3: "C3!", 4: "CA!", 5: "CN4!", 6: "CN5!", 7: "CNY01",
     8: "CNY02!", 9: "CNY03!", 10: "CNY06!", 11: "CNY07", 12: "CNY08",
     13: "CNY09", 14: "CODE!", 15: "CODE2!", 16: "D1", 17: "D2", 18: "D3!",
-    19: None, 20: "DUN1", 21: "DUN2!", 22: "DUN4", 23: "DUN5!", 24: "DUN6",
-    25: "G1", 26: "G2", 27: None, 28: "G3", 29: "H", 30: "MENU!",
+    19: None, 20: "DUN1", 21: "DUN2!", 22: "DUN4", 23: "DUN5!", 24: "G1",
+    25: "G2", 26: "G3", 27: None, 28: None, 29: "H", 30: "MENU!",
     31: "LANG", 32: "NEOSW!", 33: "PRI!", 34: "REST!", 35: "SE",
     36: "SECUR", 37: "SHANR1!",
     38: "SHANR2", 39: "SHANR3!", 40: "TA!", 41: "TENT1", 42: "TENT2",

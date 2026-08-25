@@ -5,6 +5,7 @@ numpy and Pillow, the disassemblers need capstone.
 jcd/jcdinfo.py       read a .jcd disc image: list, hex-dump, extract tracks
 scene/scenex.py      backdrops and Z-buffers off the PICT track, as PNG
 set/setx.py          the set track: scenes, doorways, collision, events
+world/worldx.py      the world-state table and the character sheets
 script/scriptx.py    the script VM: disassemble the set scripts and MAINSCRIPT
 model/modelx.py      polygon models: list, OBJ export, quick PNG preview
 anim/animx.py        character animations: list, JSON export

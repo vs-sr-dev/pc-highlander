@@ -1,11 +1,13 @@
-# Session 5 — The script VM opens, and the audio with it
+# Session 5 — The script VM, the audio, and the world state
 
 The biggest thing left on the disc was the bytecode at `ScriptOffset`. It is
 open: twenty-seven sets have a script, plus a resident one in the binary, and
 **1,173 commands decode with nothing left over**, every film reference in them
 landing on a real film. The audio came out too — the 78 sound-effect bundles,
 and the **dialogue**, which turned out to be interleaved with the video inside
-the films. Eighteen minutes of it.
+the films: eighteen minutes of it. And the world-state table and the character
+sheets, which were never on the disc at all — they are static data in the
+binary, and finding them corrected three of session 4's set names.
 
 ---
 
@@ -193,20 +195,72 @@ other read goes through the block number in `$4494` with its base computed
 elsewhere, so there is no "ask for type 7" call to go looking for. The question
 is which code path could ever compute a block inside track 9.
 
+## 9. The world state and the character sheets
+
+Both were "not yet located on the disc". They are not on the disc: they are
+**static tables in the resident binary**, and the code that installs them says
+so out loud. `$5310` copies 8,192 bytes from `$15458` to `ws` at `$32660` and
+then walks the copy in 32-byte steps relocating the long at +4 from base
+`$17458` to `$34760` and the long at +8 from base `$15458` to `$32660` — which
+is `wstSheet` and `wstParent`, named and placed exactly as `LOGICS.INC` has
+them. `$537A` does the same for `cs`, walking the `cshNext` chain.
+
+So: **197 world-state records in use of 256**, and **40 character sheets**. The
+first seven world records are byte-for-byte July's — `WORLD_QUENTIN` still
+`100, 229, 7, 153, 255`, `WORLD_CA_TURRET_KEY` still at `(-2348, -3036)` with
+its parent pointing at `WORLD_CA_KEY_HUNTER`.
+
+The sheet format resolves too: a 16-byte header and then an array of longs
+indexed **from the start of the record**, which is why `cshModelOff` is always
+4. Every full character declares `cshModelNum = 15` — the same fifteen pieces
+the models and the animations carry, now seen from a third side.
+
+→ [12-world-and-sheets.md](../12-world-and-sheets.md),
+[tools/world/worldx.py](../../tools/world/worldx.py)
+
+### The two readings check each other
+
+The world table and the script disassembly were done independently and agree
+wherever they touch:
+
+* the `CODE` script's three tumblers are world records 71, 72 and 73, and the
+  table starts them at `z` = 5, 53 and 101 — the three `slideto` targets in the
+  script, to the unit;
+* the main-menu script's first `slideto` is `(38, -128)`, and record 143 starts
+  at `(38, -128)`; the language screen's default is `(49, -72)`, and record 144
+  starts at `(49, -72)`;
+* `CA`'s `testuse #6` is `WORLD_CA_TURRET_KEY`, flagged
+  `WSTInanimate|WSTCollectable` and owned by the key hunter.
+
+### And it corrects the set names
+
+Aligning the retail table against July's `WORLD.S` by **exact (x, z)
+coordinates** pairs 72 of July's 116 entries. Each pairing carries a set name on
+one side (`SCENE_<SET>_CAMnn`) and a group number on the other (`wstSet`), so
+the 72 anchors vote 28 July set names onto retail groups — **unanimously**, no
+name for two groups and no group for two names.
+
+Twenty-five votes agree with session 4's camera-count alignment. Three do not,
+and coordinates beat camera counts: **`G1`, `G2` and `G3` are groups 24, 25 and
+26**, not 25, 26 and 28. `DUN5` keeps 23, and **`DUN6` turns out to have no
+retail group at all** — a second deletion beside `D2_12B`. All three corrections
+land on entries the camera-count pass had itself flagged as carried-by-position
+rather than anchored.
+
 ---
 
 ## Still open
 
-* **Track 9.** Unchanged from session 4: 55,188 bytes of high-entropy payload, no
-  loader found for data type `$27`.
+* **Track 9.** Better bounded (§8) but no nearer to opening: 55,188 bytes that
+  measure as random, and no code path that could ask for it.
 * **Three unreferenced films** — 15, 28 and 33. Film 34 is the boot sequence,
   played from the 68000.
-* **The world-state table.** Scripts address entries by number and July's
-  `WORLD.INC` names 116 of them, but the retail table has more and the indices
-  have drifted: `CA_TURRET_KEY` is 6 in both, `CODE_HAND` is 43 in July and 74
-  on the disc. The drift is monotone, so the same alignment trick that named the
-  sets should work — but it needs the retail table, which is built at runtime
-  and has not been located yet.
+* **125 of the 197 world records have no name** — their characters moved
+  between July and October, so the coordinate match does not reach them.
+* **The character sheets' long arrays** are zero in the binary and filled from
+  the CD, so nothing statically links a sheet to a model bundle on track 5.
+* **`cshBehaviour`** takes eleven distinct values and is presumably an AI
+  selector; `AICTRL.GAS` is where to look.
 * **`gvar[0..2]`**, the combination the code locks check, is written by
   something outside the scripts.
 * Seventeen GPU modules, the `SLP` payload, eleven binary models, the remaining
@@ -216,14 +270,10 @@ is which code path could ever compute a block inside track 9.
 
 ## TODO for session 6
 
-1. **The world-state table.** Find where the retail `ws` at `$32660` is filled
-   from. If it is a linked table in the binary like the item models were, every
-   character and object in every script gets a name, and the scripts stop being
-   anonymous.
-2. **The manifest.** One JSON tying scenes, sets, models, animations, films and
+1. **The manifest.** One JSON tying scenes, sets, models, animations, films and
    now scripts together. It is the stated phase-2 deliverable and everything it
    needs now exists.
-3. **Track 9**, still by widening `dis68k`'s recursion through the jump-table
+2. **Track 9**, still by widening `dis68k`'s recursion through the jump-table
    idiom at `$50A6`, or by emulator.
-4. **Then phase 3** — the SDL3 viewer. Carry over: models are **Z up**, pixels
+3. **Then phase 3** — the SDL3 viewer. Carry over: models are **Z up**, pixels
    are **R5 B5 G6**.
