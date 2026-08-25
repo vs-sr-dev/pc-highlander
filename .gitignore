@@ -1,0 +1,39 @@
+# ============================================================
+#  BYOA — Bring Your Own Assets
+#  Nulla di proprietario Atari / Lore Design entra in questo repo.
+# ============================================================
+
+# Dump del sorgente originale 1995 (Lore Design / Atari)
+Highlander/
+reference/
+original/
+
+# Immagini disco Jaguar CD
+*.jcd
+*.cdi
+*.cue
+*.bin
+*.iso
+
+# Asset estratti dal disco dell'utente
+assets/
+extracted/
+
+# Build
+build/
+out/
+cmake-build-*/
+*.o
+*.obj
+*.exe
+*.dll
+*.pdb
+*.ilk
+
+# Editor / OS
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*.swp
