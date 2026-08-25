@@ -52,12 +52,14 @@ lands on the first film's `FILM` header), but the July 1995 offset tables do
 
 ### Phase 2 — Get the assets out — IN PROGRESS
 Extractors for scenes (backdrop plus Z), cinepaks, models, animations, sets,
-character sheets and sounds.
-Settled so far: the Jaguar 16-bit pixel layout (R5 B5 G6, **not** RGB565) and the
-exact scene track layout (672 scenes, 110 blocks each). Blocked on one thing: the
-scene payload is compressed and the codec is not in the July source — see
-[07-scene-format.md](07-scene-format.md). Output into `assets/` with a JSON manifest named
+character sheets and sounds. Output into `assets/` with a JSON manifest named
 from `CDLINK.INC` / `DATA.INC` / `WORLD.INC`.
+
+Settled so far: the Jaguar 16-bit pixel layout (R5 B5 G6, **not** RGB565) and the
+exact scene track layout (672 scenes of 110 blocks each). Blocked on one thing:
+the scene payload is compressed, and the codec is not in the July source — see
+[07-scene-format.md](07-scene-format.md).
+
 **Success criteria:** backdrops open as PNG; the wine-bottle model extracted
 from the CD matches `MERLOT79.INC` in the source.
 
