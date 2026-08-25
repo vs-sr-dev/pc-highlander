@@ -62,8 +62,14 @@ the **models** (239 of them, as OBJ), the **localised text** in three languages,
 the **film inventory**, and the identity and record format of every data track
 but one ([06-jcd-format.md](06-jcd-format.md)).
 
-Still to write: extractors for animations, sets, character sheets and sounds,
-and the JSON manifest that names everything from `CDLINK.INC` / `DATA.INC` /
+Since then: the **animations** (327 of them), the **set track** with its scene
+tables, doorways, collision meshes and event lists
+([10-set-track.md](10-set-track.md)), and the **script VM**, whose bytecode
+carries the puzzle and cutscene logic and places 32 of the 36 films
+([11-script-vm.md](11-script-vm.md)).
+
+Still to write: extractors for the character sheets and the sampled sounds, and
+the JSON manifest that names everything from `CDLINK.INC` / `DATA.INC` /
 `WORLD.INC`. Track 9 is still unidentified.
 
 **Success criteria:** backdrops open as PNG; the wine-bottle model extracted

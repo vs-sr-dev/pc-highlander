@@ -3,15 +3,17 @@
 A native PC reimplementation of **Highlander: The Last of the MacLeods**
 (Lore Design Ltd. / Atari Corp., Jaguar CD, 1995).
 
-> **Status: phase 2, both success criteria met.** All 672 backdrops and their
+> **Status: phase 2 complete, and the script VM is open.** All 672 backdrops and their
 > Z-buffers extract as PNG — the scene payload turned out to be XORed with an
 > 8 KB key held in the game binary, read out of the shipped code with the new
 > 68000 and Jaguar-GPU disassemblers. The models extract too, and the wine bottle
 > from the disc is facet-for-facet the `MERLOT79.INC` in the 1995 source. Also
 > out: 285 animations, the 48 sets with their collision meshes and event lists,
 > and the item text in three languages. Every backdrop can be named from the disc
-> data. Still to write: the script VM, and extractors for the sampled audio and
-> the character sheets.
+> data. The game's puzzle and cutscene logic is bytecode for a GPU virtual
+> machine, and all 1,173 commands of it now disassemble — which places 32 of the
+> 36 films. Still to write: extractors for the sampled audio and the character
+> sheets.
 
 ---
 
@@ -62,6 +64,7 @@ Z-buffer**, plus **Cinepak** full-motion video and **Red Book** CD audio.
 | [docs/08-code-and-gpu.md](docs/08-code-and-gpu.md) | Inside the retail binary: boot chain, memory map, GPU modules |
 | [docs/09-text-and-fmv.md](docs/09-text-and-fmv.md) | The localised text and the Cinepak films |
 | [docs/10-set-track.md](docs/10-set-track.md) | The set track: scene tables, doorways, collision, events |
+| [docs/11-script-vm.md](docs/11-script-vm.md) | The script VM: encoding, opcodes, and what the scripts do |
 | [docs/sessions/](docs/sessions/) | Work log, one note per session |
 
 ## Tools
@@ -92,6 +95,10 @@ python tools/set/setx.py DIR/track03_data.bin --json assets/sets.json
 
 # the 36 Cinepak films
 python tools/cinepak/filmls.py DIR/track07_1111.bin --tsv
+
+# the scripts: 27 sets plus the resident MAINSCRIPT
+python tools/script/scriptx.py DIR/track03_data.bin --all --out assets/scripts
+python tools/script/scriptx.py DIR/track02_00004000.bin --main
 
 # the game code, and one GPU module
 python tools/m68k/dis68k.py DIR/track02_00004000.bin --off 0x12600 --base 0x5000 --len 0x30000 --entry 0x5000 --out code.asm

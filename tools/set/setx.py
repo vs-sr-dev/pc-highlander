@@ -89,12 +89,23 @@ GROUP_NAMES = {
     8: "CNY02!", 9: "CNY03!", 10: "CNY06!", 11: "CNY07", 12: "CNY08",
     13: "CNY09", 14: "CODE!", 15: "CODE2!", 16: "D1", 17: "D2", 18: "D3!",
     19: None, 20: "DUN1", 21: "DUN2!", 22: "DUN4", 23: "DUN5!", 24: "DUN6",
-    25: "G1", 26: "G2", 27: None, 28: "G3", 29: "H", 30: "MENU!", 31: None,
-    32: "NEOSW!", 33: "PRI!", 34: "REST!", 35: "SE", 36: "SECUR", 37: "SHANR1!",
+    25: "G1", 26: "G2", 27: None, 28: "G3", 29: "H", 30: "MENU!",
+    31: "LANG", 32: "NEOSW!", 33: "PRI!", 34: "REST!", 35: "SE",
+    36: "SECUR", 37: "SHANR1!",
     38: "SHANR2", 39: "SHANR3!", 40: "TA!", 41: "TENT1", 42: "TENT2",
     43: "TENT3!", 44: "TENT4", 45: "TENT5!", 46: "TENT6", 47: "TENT7",
     48: "TRAIN!",
 }
+
+
+# Four sets are too small for a majority vote to pick out the group they own -
+# each lists one scene of its own next to one or two borrowed ones.  Their
+# scripts settle it: set 10 and set 11 both drive a combination lock and leave
+# by a `camera` to TA and to D2/PRI respectively, so the panel views are theirs;
+# set 29 runs the main menu (start game / credits, with the timeout that resets
+# the machine) and set 30 writes a three-way choice to a global, which is the
+# language screen that group 31 shows.
+OWN_GROUP = {10: 14, 11: 15, 29: 30, 30: 31}
 
 
 def scene_name(sid):
@@ -146,7 +157,7 @@ def parse_set(d, n):
     groups = {}
     for sc in scenes:
         groups[sc["group"]] = groups.get(sc["group"], 0) + 1
-    main = max(groups, key=groups.get)
+    main = OWN_GROUP.get(n) or max(groups, key=groups.get)
     return dict(index=n, group=main,
                 name=(GROUP_NAMES.get(main) or "").rstrip("!") or None,
                 hinum=hi, lonum=lo, script=scr, scenes=scenes,

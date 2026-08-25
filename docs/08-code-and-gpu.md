@@ -85,7 +85,7 @@ for type 5, which is track 7.
 Reads go through `CD_read` with `d0` = absolute block, `a0`/`a1` = buffer bounds
 (`$118000`..`$1F8000`), and a poll loop on `CD_ptr`.
 
-## 8.3 The GPU: one resident core, eighteen overlays
+## 8.3 The GPU: one resident core, twenty overlays
 
 `$F03000` holds a 4 KB kernel loaded by the 68000 through the blitter. Its entry
 point is at `$F03050`:
@@ -156,7 +156,7 @@ plus the top of GPU RAM; every overlay loads at `$F031D0`.
 | `$2DD40` | `$F031D0` | 2880 | `$572E` | |
 | `$2E888` | `$F031D0` | 1944 | | |
 | `$2F028` | `$F031D0` | 736 | `$570E`, `$6C7C`, `$799E`, `$8352` | |
-| `$2F310` | `$F031D0` | 2976 | `$545A`, `$8CF2` | |
+| `$2F310` | `$F031D0` | 2976 | `$545A`, `$8CF2` | **the script VM** |
 | `$30130` | `$F031D0` | 536 | | |
 | `$30350` | `$F031D0` | 48 | `$8428` | |
 
@@ -166,6 +166,11 @@ destination `$F1B000`.
 **How the scene decoder was found:** it is the only module whose `movei`
 immediates include `$3E800` (256,000) and `$1F400` (128,000). Posting it from
 `$7FE0` — inside the CD service routine — is the confirmation.
+
+**How the script VM was found:** `SCRIPT.GAS` ends with `condtable`, five longs
+reading `0, $11, $22, $44, $05`, and that sequence occurs exactly once in the
+binary, at `$2FD8C`. Its 70-long dispatch table follows immediately, and the
+module holding both is `$2F310`. See [11-script-vm.md](11-script-vm.md).
 
 ## 8.4 The tools
 

@@ -123,10 +123,10 @@ What is actually on the disc:
 | `CINEPAK` | 3 |
 
 So the camera changes are events, and almost everything else is not — the
-scripts at `ScriptOffset` carry the rest. Two of the three `CINEPAK` events name
-films at blocks 23,240 and 1,520, which are films 10 and 2 in the track-7
-inventory, to the block. That confirms the field but does not scale: naming the
-other 34 films needs the script VM.
+scripts at `ScriptOffset` carry the rest. All three `CINEPAK` events name films
+in the track-7 inventory to the block: blocks 23,240 and 1,520, which are films
+9 and 2. Session 5 read the scripts and found 36 more film references, all of
+them landing on a film exactly (§11.7).
 
 ## 10.6 Naming the sets
 
@@ -151,8 +151,24 @@ picture in the right place.
 The table lives in `GROUP_NAMES` in `setx.py`, so every scene can be named
 `<SET>_CAM<nn>` from its id alone. Note that the *set index* to group mapping is
 weaker than the id scheme for the tiny sets: sets with two or three scenes have
-no clear majority group, so their name is a guess. Scene naming does not depend
-on that — it comes from the id.
+no clear majority group, so a vote cannot say which of them the set owns. Scene
+naming does not depend on that — it comes from the id.
+
+**Session 5 settled the four tiny sets from their scripts** (§11.6), and
+`setx` now carries them as an explicit `OWN_GROUP` override:
+
+| set | owns | why |
+|---:|---|---|
+| 10 | 14 `CODE` | drives a combination lock, leaves by `camera TA_CAM03` |
+| 11 | 15 `CODE2` | the same lock, leaving to `D2_CAM12` and `PRI_CAM00` |
+| 29 | 30 `MENU` | the main menu: start game, credits, and a reset timeout |
+| 30 | 31 `LANG` | writes 0/1/2 to the language variable and leaves |
+
+That also names the third of the three post-July groups: **group 31 is `LANG`**,
+and its single scene decodes to "SELECT LANGUAGE / ENGLISH / FRANCAIS /
+DEUTSCHE" over the same stormy hill as the main menu. Groups 19 and 27 are still
+unnamed; 19 is a wooded garden reached from `DUN1`, `DUN4` and `G3`, and 27 is a
+33-scene cave system that connects to seven other sets.
 
 ## 10.7 Using the tool
 
