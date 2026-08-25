@@ -3,22 +3,25 @@
 A native PC reimplementation of **Highlander: The Last of the MacLeods**
 (Lore Design Ltd. / Atari Corp., Jaguar CD, 1995).
 
-> **Status: phase 2 complete; the script VM and the audio are open.** All 672
-> backdrops and their Z-buffers extract as PNG — the scene payload turned out to
+> **Status: phase 2 complete.** All 672
+> backdrops and their Z-buffers extract as PNG; the scene payload turned out to
 > be XORed with an 8 KB key held in the game binary, read out of the shipped code
-> with the new 68000 and Jaguar-GPU disassemblers. The models extract too, and
-> the wine bottle from the disc is facet-for-facet the `MERLOT79.INC` in the 1995
-> source. Also out: 327 animations, the 48 sets with their collision meshes and
-> event lists, and the item text in three languages. Every backdrop can be named
-> from the disc data. The game's puzzle and cutscene logic is bytecode for a GPU
-> virtual machine, and all 1,173 commands of it now disassemble — which places 33
-> of the 36 films. The **dialogue** turned out to be interleaved with the video:
-> 18 minutes 23 seconds of it, plus 78 sound-effect bundles, all out as `.wav`.
-> The world-state table and the character sheets are out too — they were static
-> data in the binary all along. **Phase 2 is finished:** `tools/manifest.py`
-> writes the single JSON the engine will read, tying 672 scenes, 48 sets, 197
-> world records, 239 models, 327 animations, 36 films, 78 waves and every script
-> together. Next is phase 3, a viewer.
+> with the 68000 and Jaguar-GPU disassemblers written for the job. The models
+> extract too, and the wine bottle from the disc is facet-for-facet the
+> `MERLOT79.INC` in the 1995 source.
+>
+> Also out: 327 animations, the 48 sets with their collision meshes and event
+> lists, the item text in three languages, and the **script VM** — the game's
+> puzzle and cutscene logic is bytecode for a virtual machine that runs on the
+> GPU, and all 1,173 commands of it disassemble, which places 33 of the 36 films.
+> The **dialogue** turned out to be interleaved with the video: 18 minutes 23
+> seconds of it, plus 78 sound-effect bundles, all out as `.wav`. The
+> **world state** and the **character sheets** were never on the disc at all —
+> they are static tables in the binary.
+>
+> [tools/manifest.py](tools/manifest.py) ties it together into the single JSON
+> the engine will read. One 156 KB track is still unidentified and nothing
+> else depends on it. Next is phase 3, a viewer.
 
 ---
 
@@ -45,6 +48,13 @@ PC-Highlander/
   assets/              <- output of the extraction tools (local, never committed)
   docs/  src/  tools/  <- this repository
 ```
+
+## Licence
+
+[MIT](LICENSE), covering this repository's own contents — the tools, the engine
+and the format documentation. It does not cover *Highlander: The Last of the
+MacLeods*, whose code, data and assets remain with their rights holders and are
+not distributed here.
 
 ---
 
