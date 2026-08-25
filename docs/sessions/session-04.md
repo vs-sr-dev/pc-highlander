@@ -87,17 +87,47 @@ the shipped bottle against the floating-point coordinates in the source gives an
 affine map with a maximum residual of 0.72 — integer rounding, nothing else. On
 the disc, **Z is up**.
 
+## The set track, later still
+
+Track 3 gives up the rest of the world model, and it closes a loop with the
+scenes. Documented in [10-set-track.md](../10-set-track.md).
+
+* Each set's **scene table** lists its views by a 16-bit id and a CD block
+  offset, and that id is **the same value the scene's camera footer carries at
+  offset 0**. The two tracks are tied together by it.
+* The id is `group * 64 + camera`, 48 groups for 48 sets. The tables reference
+  **all 672 scenes with nothing left over**, 792 references in total, because
+  113 scenes are doorways listed by both sets that share them.
+* The **init table** is the arrival points, addressed by the borrowed ids —
+  which is what marks them as the other side of a door.
+* The **collision mesh** is 2D: vertices are `(x, z)` long pairs and the
+  triangle carries the ground height plus three symmetric neighbour links. The
+  triangle list ends where the script begins in all 48 sets.
+* The **event record** is 36 bytes, and it parses cleanly: a circle on the floor
+  plan with a type, a status word written back in place, and up to three data
+  words. 1,203 of the 1,282 events are camera changes.
+
+**The sets have names again.** July's `CDLINK.INC` names 46 sets in alphabetical
+order and the retail groups are in the same order, so the two lists align in one
+monotone pass — three insertions, one deletion, totals agreeing at 672 against
+594, and 23 groups anchored by an exact camera count. The check that settles it:
+July's `MENU` is a one-scene set, the alignment puts it at the one-scene group
+30, and decoding that scene gives the **main menu** — "START GAME / LANGUAGE /
+CREDITS" over a stormy hill.
+
+Every backdrop can now be named `<SET>_CAM<nn>` from its id alone.
+
 ## Still open
 
 * **Track 9.** 55,188 bytes of 7.996-bits/byte payload followed by the long
   `$C00DADE0` repeated 25,187 times. Not the scene key, no repeating key at any
   shift up to 20,000, and its content tag is scrambled too. No code requesting
   type `$27` has turned up yet.
-* **Which film is which.** The route is the set event lists on track 3:
-  `EVENT_TYPE_CINEPAK` events name a film by block offset, and July's
-  `CDLINK.INC` still names the sets.
-* **The scene id at footer +0** — unique and increasing across all 672, with
-  gaps. Mapping ids to sets would give every backdrop a name.
+* **Which film is which.** The `CINEPAK` event's third data word really is the
+  film's CD block offset — the two that occur match films 10 and 2 to the block.
+  But there are only three such events on the whole disc: the rest of the film
+  triggers are in the set scripts, so this needs the script VM.
+* **The 24 bytes after the set header**, reading `4, N, 0, 4, 6N, $10000`.
 * **The `SLP` payload.** 140 of track 5's 220 models carry 8 to 88 bytes after
   the facet list, always a multiple of 8. Its meaning is unknown.
 * Eleven of the nineteen models linked into the binary are unidentified — the
@@ -109,8 +139,9 @@ the disc, **Z is up**.
 1. **Animations.** The extractor is the obvious companion to `modelx`; the
    record format is already verified (§3.4) and the frame layout is 20 bytes
    plus three angle bytes per piece.
-2. **Parse the set event lists** on track 3. It gives the film names, the
-   scene-to-set mapping, and the event model the port will need anyway.
+2. **The script VM.** `ScriptOffset` is non-zero in 24 of the 48 sets and it is
+   where the film triggers, the dialogue and the puzzle logic live. `SCRIPT.GAS`
+   and `OPCODES.INC` in the July source are the specification.
 3. **Track 9**: find the loader for type `$27`. Widening `dis68k` coverage past
    the current 8% (it stops at jump tables) is probably the way in.
 4. Work out what the `SLP` payload on 140 of the models is.

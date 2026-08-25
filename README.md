@@ -61,6 +61,7 @@ Z-buffer**, plus **Cinepak** full-motion video and **Red Book** CD audio.
 | [docs/07-scene-format.md](docs/07-scene-format.md) | Scene format: slot layout, pixel format, the XOR obfuscation |
 | [docs/08-code-and-gpu.md](docs/08-code-and-gpu.md) | Inside the retail binary: boot chain, memory map, GPU modules |
 | [docs/09-text-and-fmv.md](docs/09-text-and-fmv.md) | The localised text and the Cinepak films |
+| [docs/10-set-track.md](docs/10-set-track.md) | The set track: scene tables, doorways, collision, events |
 | [docs/sessions/](docs/sessions/) | Work log, one note per session |
 
 ## Tools
@@ -82,6 +83,9 @@ python tools/text/textx.py DIR/track02_00004000.bin --format tsv
 
 # the models: 19 in the binary (the items), 220 on track 5 (characters)
 python tools/model/modelx.py DIR/track02_00004000.bin --obj assets/models --png assets/models
+
+# the 48 sets: scene tables, doorways, collision meshes, events
+python tools/set/setx.py DIR/track03_data.bin --json assets/sets.json
 
 # the 36 Cinepak films
 python tools/cinepak/filmls.py DIR/track07_1111.bin --tsv

@@ -290,6 +290,11 @@ Animation state flags (`LOGICS.INC`): `FSATurn`, `FSAPlay`, `FSALock`,
 
 ## 3.5 Sets and scenes
 
+> The retail set track is documented in full in
+> [10-set-track.md](10-set-track.md): scene tables, the scene-id scheme, the
+> doorway entry points, the collision mesh and the event records.
+
+
 A **set** is an environment (a "room" of the world); a **scene** is one fixed
 camera view inside that set. `HIGH1.MAK` lists the **45 sets**:
 
