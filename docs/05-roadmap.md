@@ -55,10 +55,12 @@ Extractors for scenes (backdrop plus Z), cinepaks, models, animations, sets,
 character sheets and sounds. Output into `assets/` with a JSON manifest named
 from `CDLINK.INC` / `DATA.INC` / `WORLD.INC`.
 
-Settled so far: the Jaguar 16-bit pixel layout (R5 B5 G6, **not** RGB565) and the
-exact scene track layout (672 scenes of 110 blocks each). Blocked on one thing:
-the scene payload is compressed, and the codec is not in the July source — see
-[07-scene-format.md](07-scene-format.md).
+Settled so far: the Jaguar 16-bit pixel layout (R5 B5 G6, **not** RGB565), the
+exact scene slot layout (672 scenes of 110 blocks, 256,000 bytes of fixed-size
+data plus a 48-byte camera footer in s1.14), and the camera footer itself.
+Open: the per-pixel encoding of the backdrops. It is not a plain raster in any
+byte order, width or interleaving tried, yet the bit-15 plane clearly carries
+picture content — see [07-scene-format.md](07-scene-format.md).
 
 **Success criteria:** backdrops open as PNG; the wine-bottle model extracted
 from the CD matches `MERLOT79.INC` in the source.
@@ -120,7 +122,7 @@ Highlander/    (git-ignored) the user's own original material
 | Risk | Mitigation |
 |---|---|
 | ~~The July 1995 offsets do not match the retail disc~~ **confirmed in phase 1** | Rebuild the map by signature scanning. Already done for the 36 Cinepak films; still to do for the other data types |
-| ~~Scene / Z-buffer format not documented in the source~~ **worse than expected** | The retail scenes are compressed with a codec added after July 1995. The decompressor has to be recovered from the disc's own boot code |
+| ~~Scene / Z-buffer format not documented in the source~~ **still open** | Slot layout and camera footer are solved; the per-pixel encoding is not. Empirical search is exhausted — recover the decoder from the disc's own code (track 2 is the full resident binary) |
 | The source is a WIP, not the shipped code | Treat it as a **design specification**, not an oracle. Where it disagrees with the disc, the disc wins |
 | The asset conversion tools are missing (Map Tool, SKELSKIN) | Not needed: we read data that is already converted, off the CD. They would only matter for authoring new content |
 | CRY vs RGB16 with VARMOD | The RGB16 half is settled (see [07-scene-format.md](07-scene-format.md)); which pixels are CRY still needs real backdrop data |
