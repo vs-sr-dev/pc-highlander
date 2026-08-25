@@ -2,6 +2,7 @@ Extractors and utilities. Every tool is standalone Python 3; `scenex.py` needs
 numpy and Pillow, the disassemblers need capstone.
 
 ```
+manifest.py          one JSON tying all of the above together
 jcd/jcdinfo.py       read a .jcd disc image: list, hex-dump, extract tracks
 scene/scenex.py      backdrops and Z-buffers off the PICT track, as PNG
 set/setx.py          the set track: scenes, doorways, collision, events

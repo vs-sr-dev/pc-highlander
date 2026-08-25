@@ -394,6 +394,37 @@ class Script(object):
             who = "char"
         return "%s.%s.%s, r%d" % (who, field, size, reg)
 
+    # -- a machine-readable digest, for the manifest ----------------------
+    def summary(self):
+        """What this script is made of.  Call after disassemble()."""
+        import collections
+        ops = collections.Counter()
+        films, cameras, setbits, testbits, selects, samples = (
+            [], [], [], [], [], [])
+        for pc in sorted(k for k, v in self.kind.items() if v == "code"):
+            cmd = struct.unpack_from(">I", self.d, pc)[0]
+            op, mode, oper = cmd >> 24, (cmd >> 20) & 15, cmd & 0xFFFF
+            if op >= LASTOP:
+                continue
+            ops[OPS[op][0]] += 1
+            if op == 39:                                   # cinepak
+                blk = struct.unpack_from(">I", self.d, pc + 4)[0]
+                films.append(dict(block=blk, film=self.films.get(blk)))
+            elif op == 42:                                 # camera
+                cameras.append(dict(id=oper, name=self.scenes.get(oper)))
+            elif op == 56:                                 # setbit
+                setbits.append(dict(bit=oper, set=bool(mode)))
+            elif op == 55:                                 # testbit
+                testbits.append(oper)
+            elif op == 22 and not mode:                    # select
+                selects.append(oper)
+            elif op == 41:                                 # sample
+                samples.append(oper)
+        return dict(bytes=self.end_of_script(), commands=sum(ops.values()),
+                    opcodes=dict(ops), films=films, cameras=cameras,
+                    setbits=setbits, testbits=sorted(set(testbits)),
+                    world=sorted(set(selects)), samples=sorted(set(samples)))
+
     # -- driver -----------------------------------------------------------
     def disassemble(self, base=0):
         limit = self.hard_end()

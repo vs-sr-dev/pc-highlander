@@ -15,7 +15,10 @@ A native PC reimplementation of **Highlander: The Last of the MacLeods**
 > of the 36 films. The **dialogue** turned out to be interleaved with the video:
 > 18 minutes 23 seconds of it, plus 78 sound-effect bundles, all out as `.wav`.
 > The world-state table and the character sheets are out too — they were static
-> data in the binary all along. Still to write: the phase-2 manifest.
+> data in the binary all along. **Phase 2 is finished:** `tools/manifest.py`
+> writes the single JSON the engine will read, tying 672 scenes, 48 sets, 197
+> world records, 239 models, 327 animations, 36 films, 78 waves and every script
+> together. Next is phase 3, a viewer.
 
 ---
 
@@ -110,6 +113,9 @@ python tools/wave/wavex.py DIR/track05_data.bin --out assets/waves
 # the scripts: 27 sets plus the resident MAINSCRIPT
 python tools/script/scriptx.py DIR/track03_data.bin --all --out assets/scripts
 python tools/script/scriptx.py DIR/track02_00004000.bin --main
+
+# everything above, cross-referenced, in one JSON
+python tools/manifest.py DIR --out assets/manifest.json
 
 # the game code, and one GPU module
 python tools/m68k/dis68k.py DIR/track02_00004000.bin --off 0x12600 --base 0x5000 --len 0x30000 --entry 0x5000 --out code.asm

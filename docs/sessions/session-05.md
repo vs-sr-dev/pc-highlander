@@ -7,7 +7,8 @@ landing on a real film. The audio came out too — the 78 sound-effect bundles,
 and the **dialogue**, which turned out to be interleaved with the video inside
 the films: eighteen minutes of it. And the world-state table and the character
 sheets, which were never on the disc at all — they are static data in the
-binary, and finding them corrected three of session 4's set names.
+binary, and finding them corrected three of session 4's set names. With the
+manifest written, **phase 2 is finished.**
 
 ---
 
@@ -247,6 +248,28 @@ retail group at all** — a second deletion beside `D2_12B`. All three correctio
 land on entries the camera-count pass had itself flagged as carried-by-position
 rather than anchored.
 
+## 10. Phase 2 is finished
+
+The last thing phase 2 asked for was a manifest, and everything it needed now
+exists. [tools/manifest.py](../../tools/manifest.py) writes one JSON:
+
+```
+672 scenes, 48 sets, 27 scripts (1,173 commands)
+197 world records (72 named), 40 character sheets
+239 models, 327 animations, 36 films (33 with a trigger), 78 waves
+60 localised text records
+```
+
+all cross-referenced by name and index — a scene knows which sets list it, a set
+knows what its script touches, a film knows every place on the disc that plays
+it. It **calls the extractors** rather than re-implementing them, so it cannot
+drift from what they know.
+
+It also derives the boot film rather than being told: the 68000 writes a film's
+CD block straight into the film-offset variable as
+`move.l #<block>, $44BC.w`, so scanning for that encoding and checking the long
+against the film inventory finds film 34 at `$5212` and again at `$30822`.
+
 ---
 
 ## Still open
@@ -270,10 +293,11 @@ rather than anchored.
 
 ## TODO for session 6
 
-1. **The manifest.** One JSON tying scenes, sets, models, animations, films and
-   now scripts together. It is the stated phase-2 deliverable and everything it
-   needs now exists.
+1. **Phase 3 — the viewer.** SDL3, 320x200, a backdrop with its Z-buffer and an
+   extracted model composited into it and depth-tested. Two things to carry over
+   so they are not rediscovered the hard way: the models are **Z up**, and the
+   pixels are **R5 B5 G6**.
 2. **Track 9**, still by widening `dis68k`'s recursion through the jump-table
    idiom at `$50A6`, or by emulator.
-3. **Then phase 3** — the SDL3 viewer. Carry over: models are **Z up**, pixels
-   are **R5 B5 G6**.
+3. **Names.** 125 world records and three films are still anonymous, and so are
+   seventeen GPU modules. None of it blocks phase 3.

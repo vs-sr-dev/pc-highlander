@@ -50,7 +50,7 @@ Tool: [tools/jcd/jcdinfo.py](../tools/jcd/jcdinfo.py). Details in
 lands on the first film's `FILM` header), but the July 1995 offset tables do
 **not** hold for the rest of the disc and must be rediscovered.
 
-### Phase 2 — Get the assets out — IN PROGRESS
+### Phase 2 — Get the assets out — DONE
 Extractors for scenes (backdrop plus Z), cinepaks, models, animations, sets,
 character sheets and sounds. Output into `assets/` with a JSON manifest named
 from `CDLINK.INC` / `DATA.INC` / `WORLD.INC`.
@@ -77,8 +77,15 @@ And the **world state**: the 197 objects and characters of the game, with the
 40 character sheets they wear, both static tables in the resident binary
 ([12-world-and-sheets.md](12-world-and-sheets.md)).
 
-Still to write: the JSON manifest that names everything from `CDLINK.INC` /
-`DATA.INC` / `WORLD.INC`. Track 9 is still unidentified.
+And the **manifest**, this phase's stated deliverable:
+[tools/manifest.py](../tools/manifest.py) writes one JSON tying the 672 scenes,
+48 sets, 27 scripts, 197 world records, 40 character sheets, 239 models, 327
+animations, 36 films, 78 waves and 60 localised text records together, each
+cross-referenced by name and index. It calls the extractors rather than
+re-implementing them, so it cannot drift from them.
+
+Track 9 is still unidentified — 156 KB out of 456 MB, and nothing else on the
+disc depends on it.
 
 **Success criteria:** backdrops open as PNG; the wine-bottle model extracted
 from the CD matches `MERLOT79.INC` in the source.
