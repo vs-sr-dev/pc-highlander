@@ -84,6 +84,9 @@ python tools/text/textx.py DIR/track02_00004000.bin --format tsv
 # the models: 19 in the binary (the items), 220 on track 5 (characters)
 python tools/model/modelx.py DIR/track02_00004000.bin --obj assets/models --png assets/models
 
+# the animations: 285 on track 5, 42 on track 8
+python tools/anim/animx.py DIR/track05_data.bin --json assets/anims.json
+
 # the 48 sets: scene tables, doorways, collision meshes, events
 python tools/set/setx.py DIR/track03_data.bin --json assets/sets.json
 

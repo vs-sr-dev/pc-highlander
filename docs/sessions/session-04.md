@@ -117,6 +117,19 @@ CREDITS" over a stormy hill.
 
 Every backdrop can now be named `<SET>_CAM<nn>` from its id alone.
 
+## Animations
+
+`animx` completes the asset set: **285 animations on track 5 and 42 on track 8**,
+570 seconds in total, all 20 fps with fifteen animated pieces.
+
+It also corrects the reading of track 5 from earlier in the session. It is not
+that some slots are models and others animations — a character slot holds its
+models *and then* its animations. In slot 0 the last model ends at `$1CAC` and
+the first animation begins at `$1CAC`, and across the whole track the 220 model
+records and the 285 animation records overlap nowhere. Two independent parsers
+tiling the same bytes with no gap and no collision is about as good a check as
+this work gets.
+
 ## Still open
 
 * **Track 9.** 55,188 bytes of 7.996-bits/byte payload followed by the long
@@ -136,15 +149,12 @@ Every backdrop can now be named `<SET>_CAM<nn>` from its id alone.
 
 ## TODO for next session
 
-1. **Animations.** The extractor is the obvious companion to `modelx`; the
-   record format is already verified (§3.4) and the frame layout is 20 bytes
-   plus three angle bytes per piece.
-2. **The script VM.** `ScriptOffset` is non-zero in 24 of the 48 sets and it is
+1. **The script VM.** `ScriptOffset` is non-zero in 24 of the 48 sets and it is
    where the film triggers, the dialogue and the puzzle logic live. `SCRIPT.GAS`
    and `OPCODES.INC` in the July source are the specification.
-3. **Track 9**: find the loader for type `$27`. Widening `dis68k` coverage past
+2. **Track 9**: find the loader for type `$27`. Widening `dis68k` coverage past
    the current 8% (it stops at jump tables) is probably the way in.
-4. Work out what the `SLP` payload on 140 of the models is.
-5. Decode the `STAB` sample format so the film audio can be extracted.
-6. Name more GPU modules — the 3D engine and the compositor are among them, and
+3. Work out what the `SLP` payload on 140 of the models is.
+4. Decode the `STAB` sample format so the film audio can be extracted.
+5. Name more GPU modules — the 3D engine and the compositor are among them, and
    the port will want to know exactly what they did.

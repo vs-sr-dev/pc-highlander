@@ -103,20 +103,23 @@ preceded by a long holding its length, each slot starting a new record:
 * **models** — the `SKELSKIN` header of §3.3. Self-consistent throughout: `VLP`
   is always `$4018`, i.e. the header plus 24 bytes at a load base of `$4000`,
   and `FLP - VLP` equals `(vertices + origins) * 8` in every record checked.
-  Twenty-one of track 5's slots are models, and the character slots hold fifteen
-  models each.
+  **220 on track 5**, fifteen per character slot.
 * **animations** — the `ANIM` header of §3.4, at offset 4. Every record
-  satisfies `size = 14 + framesize * frames`, with `framesize = 66 =
-  20 + 3 * 15`, fifteen animated pieces and 20 fps. Track 8 is animations end to
-  end; slots 2, 4 and 6 of track 5 are as well.
+  satisfies `size = 14 + framesize * frames` with `framesize = 20 + 3 * models`
+  rounded up to even, which for the fifteen pieces every character has means 66.
+  20 fps throughout. **285 on track 5 and 42 on track 8**, 570 seconds in total.
 * **waves** — `long total; 'WAVE'; long size; 8-bit samples`. Nine slots of
   track 5 and all 38 slots of track 6.
 
 Fifteen models per character and fifteen animated pieces per animation is the
 same number seen from two sides, which is a good cross-check on both readings.
 
-So track 5 is not one asset type but a **per-entity bundle** — a character's
-models, its animations and its sounds in adjacent 56-block slots.
+So track 5 is a **per-entity bundle**: a character slot holds its fifteen models
+and then its animations, one after the other, with the sounds in the neighbouring
+slot. The seam is exact — in slot 0 the last model ends at `$1CAC` and the first
+animation begins at `$1CAC` — and across the whole track the 220 model records
+and the 285 animation records do not overlap anywhere, which is the strongest
+check there is that both readings are right.
 
 ### Track 9
 

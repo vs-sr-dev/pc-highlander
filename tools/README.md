@@ -6,6 +6,7 @@ jcd/jcdinfo.py       read a .jcd disc image: list, hex-dump, extract tracks
 scene/scenex.py      backdrops and Z-buffers off the PICT track, as PNG
 set/setx.py          the set track: scenes, doorways, collision, events
 model/modelx.py      polygon models: list, OBJ export, quick PNG preview
+anim/animx.py        character animations: list, JSON export
 text/textx.py        the localised item text, English / French / German
 cinepak/filmls.py    inventory of the films on the FMV track
 m68k/dis68k.py       recursive-descent 68000 disassembler (capstone)
