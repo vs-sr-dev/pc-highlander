@@ -3,8 +3,9 @@
 A native PC reimplementation of **Highlander: The Last of the MacLeods**
 (Lore Design Ltd. / Atari Corp., Jaguar CD, 1995).
 
-> **Status: phase 1 complete.** The `.jcd` container format is decoded and the
-> retail disc layout is mapped. Engine work has not started yet.
+> **Status: phase 2 in progress.** The `.jcd` container is decoded, the retail
+> disc layout is mapped, and the scene track is located exactly. The scene
+> payload turns out to be compressed with an as-yet unidentified codec.
 
 ---
 
@@ -51,6 +52,7 @@ Z-buffer**, plus **Cinepak** full-motion video and **Red Book** CD audio.
 | [docs/04-cd-and-assets.md](docs/04-cd-and-assets.md) | How the game addresses the CD, and the asset extraction plan |
 | [docs/05-roadmap.md](docs/05-roadmap.md) | Porting strategy and phased roadmap |
 | [docs/06-jcd-format.md](docs/06-jcd-format.md) | The `.jcd` container format and the retail disc layout |
+| [docs/07-scene-format.md](docs/07-scene-format.md) | Scene track layout and the Jaguar 16-bit pixel format |
 | [docs/sessions/](docs/sessions/) | Work log, one note per session |
 
 ## Tools

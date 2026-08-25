@@ -50,9 +50,13 @@ Tool: [tools/jcd/jcdinfo.py](../tools/jcd/jcdinfo.py). Details in
 lands on the first film's `FILM` header), but the July 1995 offset tables do
 **not** hold for the rest of the disc and must be rediscovered.
 
-### Phase 2 — Get the assets out
+### Phase 2 — Get the assets out — IN PROGRESS
 Extractors for scenes (backdrop plus Z), cinepaks, models, animations, sets,
-character sheets and sounds. Output into `assets/` with a JSON manifest named
+character sheets and sounds.
+Settled so far: the Jaguar 16-bit pixel layout (R5 B5 G6, **not** RGB565) and the
+exact scene track layout (672 scenes, 110 blocks each). Blocked on one thing: the
+scene payload is compressed and the codec is not in the July source — see
+[07-scene-format.md](07-scene-format.md). Output into `assets/` with a JSON manifest named
 from `CDLINK.INC` / `DATA.INC` / `WORLD.INC`.
 **Success criteria:** backdrops open as PNG; the wine-bottle model extracted
 from the CD matches `MERLOT79.INC` in the source.
@@ -114,8 +118,8 @@ Highlander/    (git-ignored) the user's own original material
 | Risk | Mitigation |
 |---|---|
 | ~~The July 1995 offsets do not match the retail disc~~ **confirmed in phase 1** | Rebuild the map by signature scanning. Already done for the 36 Cinepak films; still to do for the other data types |
-| Scene / Z-buffer format not documented in the source | The 110-blocks-per-scene figure is a strong constraint; validate visually against recognisable backdrops |
+| ~~Scene / Z-buffer format not documented in the source~~ **worse than expected** | The retail scenes are compressed with a codec added after July 1995. The decompressor has to be recovered from the disc's own boot code |
 | The source is a WIP, not the shipped code | Treat it as a **design specification**, not an oracle. Where it disagrees with the disc, the disc wins |
 | The asset conversion tools are missing (Map Tool, SKELSKIN) | Not needed: we read data that is already converted, off the CD. They would only matter for authoring new content |
-| CRY vs RGB16 with VARMOD | To be settled experimentally on extracted backdrops; `CRYRGB.TXT` and the model colour constants give cross-references |
+| CRY vs RGB16 with VARMOD | The RGB16 half is settled (see [07-scene-format.md](07-scene-format.md)); which pixels are CRY still needs real backdrop data |
 | Where the speech went | The retail disc has no Red Book speech track. It has to be located among the samples or inside the films |
