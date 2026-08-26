@@ -155,9 +155,23 @@ and 28**.
 
 ## 12.7 Still open
 
-* The long arrays in the character sheets are zero in the binary and filled from
-  the CD, so nothing statically links a sheet to a model bundle on track 5. The
-  link is made by whatever reads `cshFileOff` / `cshFileNum`.
+* ~~The long arrays in the character sheets are zero in the binary and filled
+  from the CD, so nothing statically links a sheet to a model bundle on track 5.~~
+  **Settled from the source.** `SHEET.S` is the sheets' own source and the run at
+  `cshFileOff` is a table of 8-byte records, `entry position .w, data type .w,
+  block offset .l`, which says exactly which CD blob fills which slot of the long
+  array. Quentin's reads: the models from `MODELDATA` at `BO_MODEL_QUENTIN`, then
+  animations into slots 0, 14 and 28 from `BO_ANIM_QUENTIN_HAND1..3`, then
+  `CHARDATA` at `BO_LOGICS_1` and a sound bundle. So his thirty animations are
+  three loads of 14, 14 and 2, and the sword and gun banks are not his at all -
+  they live on the weapon's sheet, which is what `AICTRL.GAS` reaches for first
+  when the player is armed. That is session 8's "four banks, 114 in all". The
+  `.w` data type is `VIDSTUFF.INC`'s: 1 `CHARDATA` ("jakes joypad logics"),
+  2 `MODELDATA`, 3 `ANIMDATA`, 4 `SCENEDATA`, 5 `SAMPLEDATA`, 6 `SETDATA`,
+  7 `REDDATA`, 8 `BITMAPDATA`, 9 `HIRESDATA` ("640 x 400 pics"), 10 `WSCSDATA`,
+  11 `CINEDATA`, 12 `RUNDATA`. The block offsets are July's and the retail disc
+  moved them (6.5), so the table gives the shape and the names, not the
+  addresses.
 * `cshBehaviour` takes eleven distinct values — 0, 10, 20, 30, 40, 250, 1536, 1792,
   2304, 2816, 3840 — and is presumably an AI selector; `AICTRL.GAS` is the place
   to look.

@@ -25,12 +25,27 @@ than one floor.
 
 **It measures the ground.**  `--ground SET` compares the height word of each
 collision triangle against the height of the surface actually drawn above it.
-The two agree in scale - fitting D1, which is built in storeys, gives
+The two agree in scale - fitting D1, which is built in storeys, gave
 `floor = 0.962 * height + 36.7` with r = 0.94 over 239 triangles and heights
-running from 1 to 2473, where the top storey's floor reconstructs to 2468 - so
+running from 1 to 2473, where the top storey's floor reconstructed to 2468 - so
 the collision height is the world y of the floor, at 1:1, over the whole range.
-What is left over is relief in the art that the flat mesh approximates: about
-12 units in DUN1, about 70 under the wine bottle in TENT6.
+
+*How* it measures it matters, and session 9 had to change it.  Taking the modal
+height over everything inside a triangle's plan footprint measures the walls
+standing on the triangle and the crates sitting on it as much as the floor: on
+the same triangle from two cameras that estimate disagrees with itself by a
+median of 300 units, and pooling it per set produced a table of per-set "gaps"
+running to 348 that was an artefact of the pooling.  Nothing is below the floor,
+so what this reports now is the *lowest flat surface* each camera saw in a
+100-unit cell of plan, taken over the cameras that can see it.  Read that way
+the residual is local relief in the art of a few tens of units, with no per-set
+structure.  docs/14-characters.md 14.7.
+
+The cost of reading it that way is that a set built in storeys reads *low*: a
+cell of plan under a first floor also holds the ground floor, and the lowest
+surface in it is the ground floor whichever triangle is being asked about.  So
+the 1:1 result above is the old estimator's, on a set the new one is the wrong
+tool for, and --ground says so when a set has more than one ground height.
 
 Usage
     python tools/scene/backproj.py TRACK4 --boot TRACK2 --scene CA_CAM03 --probe X,Z
@@ -176,33 +191,62 @@ def cmd_ground(fh, key, manifest, sets, setname, limit):
     verts = np.array(st["collision"]["vertices"], float)
     tris = st["collision"]["triangles"]
     scenes = scenes_of(manifest, setname)[:limit]
-    pts = []
+
+    # The lowest flat surface each camera saw in each cell of plan.  Cameras
+    # that cannot see the floor of a cell - because a table is in the way -
+    # report the table and are out-voted by the ones that can.
+    cell, minpts, band = 100.0, 25, 30.0
+    floor, seen = {}, set()
     for s in scenes:
         depth, m, t = read_scene(fh, s["scene"], key)
+        kt = tuple(np.round(t, 1)) + tuple(np.round(m.ravel(), 4))
+        if kt in seen:
+            continue                    # the same camera twice says nothing new
+        seen.add(kt)
         p, ok = world_points(depth, m, t)
-        pts.append(p[ok])
-    pts = np.vstack(pts)
-    plan = pts[:, [0, 2]]
+        p = p[ok]
+        if len(p) < 2000:
+            continue
+        grid = collections.defaultdict(list)
+        for x, y, z in p:
+            grid[(int(x // cell), int(z // cell))].append(y)
+        for k, v in grid.items():
+            if len(v) < minpts:
+                continue
+            v = np.sort(np.array(v))
+            low = v[v <= np.percentile(v, 2) + band]
+            if len(low) < minpts:
+                continue
+            lvl = float(np.median(low))
+            if k not in floor or lvl < floor[k]:
+                floor[k] = lvl
 
     rows = []
     for i, tri in enumerate(tris):
         a, b, c = [verts[k] for k in tri["verts"]]
-        d1 = (b[0] - a[0]) * (plan[:, 1] - a[1]) - (b[1] - a[1]) * (plan[:, 0] - a[0])
-        d2 = (c[0] - b[0]) * (plan[:, 1] - b[1]) - (c[1] - b[1]) * (plan[:, 0] - b[0])
-        d3 = (a[0] - c[0]) * (plan[:, 1] - c[1]) - (a[1] - c[1]) * (plan[:, 0] - c[0])
-        inside = ~(((d1 < 0) | (d2 < 0) | (d3 < 0)) & ((d1 > 0) | (d2 > 0) | (d3 > 0)))
-        if inside.sum() < 150:
+        xs, zs = [a[0], b[0], c[0]], [a[1], b[1], c[1]]
+        got = []
+        for cx in range(int(min(xs) // cell), int(max(xs) // cell) + 1):
+            for cz in range(int(min(zs) // cell), int(max(zs) // cell) + 1):
+                if (cx, cz) not in floor:
+                    continue
+                px, pz = (cx + 0.5) * cell, (cz + 0.5) * cell
+                d1 = (b[0] - a[0]) * (pz - a[1]) - (b[1] - a[1]) * (px - a[0])
+                d2 = (c[0] - b[0]) * (pz - b[1]) - (c[1] - b[1]) * (px - b[0])
+                d3 = (a[0] - c[0]) * (pz - c[1]) - (a[1] - c[1]) * (px - c[0])
+                if ((d1 < 0) or (d2 < 0) or (d3 < 0)) and                    ((d1 > 0) or (d2 > 0) or (d3 > 0)):
+                    continue
+                got.append(floor[(cx, cz)])
+        if len(got) < 2:
             continue
-        y = pts[inside, 1]
-        hist, edges = np.histogram(y, bins=np.arange(y.min() - 20, y.max() + 40, 20))
-        mode = (edges[hist.argmax()] + edges[hist.argmax() + 1]) / 2
-        rows.append((tri["height"], mode, int(inside.sum())))
+        rows.append((tri["height"], float(np.median(got)), len(got)))
 
     if len(rows) < 4:
         print("%s: too few triangles with enough coverage" % setname)
         return
     a = np.array([(r[0], r[1]) for r in rows], float)
-    print("%s: %d cameras, %d triangles covered" % (setname, len(scenes), len(rows)))
+    print("%s: %d distinct cameras, %d cells of plan, %d triangles covered"
+          % (setname, len(seen), len(floor), len(rows)))
     if a[:, 0].std() > 0:
         design = np.vstack([a[:, 0], np.ones(len(a))]).T
         sol, _, _, _ = np.linalg.lstsq(design, a[:, 1], rcond=None)
@@ -211,6 +255,10 @@ def cmd_ground(fh, key, manifest, sets, setname, limit):
     by_h = collections.defaultdict(list)
     for h, mode, n in rows:
         by_h[h].append(mode)
+    if len(set(r[0] for r in rows)) > 1:
+        print("  (built in storeys: the lowest-surface estimator reads the"
+              " floor below an upper one,")
+        print("   so the rows above height 1 are a floor, not a measurement)")
     print("  height   triangles   drawn floor (median)   difference")
     for h in sorted(by_h):
         v = np.array(by_h[h])

@@ -37,6 +37,36 @@ A native PC reimplementation of **Highlander: The Last of the MacLeods**
 > stops it dead, and the floor underfoot is the highest any reached triangle
 > offers.
 >
+> **And the pad now drives him, through doorways, into other sets.** The
+> joypad picks the animation and the animation's own root motion does the
+> moving, which is `AICTRL.GAS`'s arrangement and not a viewer's: a release of
+> forward for under three frames does not stop the walk, a press inside that
+> window is a double tap and becomes a run, and what a button does depends on
+> the stance the character is already in. When a `SCENE` event names a view
+> another set owns, the engine loads that set and stands him at the arrival its
+> init table names — which needed §10.3 read the right way round. The id is the
+> view you are **leaving**, not the one you arrive at: not one of the disc's 153
+> entries is keyed on its own group, and for all 123 with a real id the
+> departing set has an event, fired from that very view, cutting into the
+> arriving one. The flags word is `facing * 256 + character`, for all 153, and
+> the `.MAP` files say the same thing in words — two `START` blocks, `QUENTIN`
+> and `RAMIREZ`, sharing one `FROM`, each with an `ORIENTATION` in degrees.
+> `hlview --check-doors` runs it over the whole disc, and found a bug that had
+> nothing to do with doorways: a triangle's vertex index was being read into a
+> byte, and three of the meshes have more than 255 vertices.
+>
+> **The ground gap turned out to be a measurement, not a mystery.** Session 8's
+> per-set table — 348 units in `PRI`, 155 in `CA` — was an artefact of taking the
+> modal height over a collision triangle's whole plan footprint, walls and crates
+> included; on the same triangle from two cameras that estimate disagrees with
+> itself by a median of 300 units. Measured as the lowest flat surface a camera
+> sees, and again by the engine itself raising a model until the backdrop stops
+> hiding it, the residual is **local relief in the art of a few tens of units** —
+> six or seven pixels on a 320x200 screen. The surviving `.MAP` files say why
+> there was never a correction to find: the map editor calibrates the horizontal
+> plane and nothing else, and every ground height in the game is an integer
+> somebody typed in by eye.
+>
 > Two smaller things the disc gave up on the way. The camera footer's long at
 > +32 is not the constant session 3 took it for: it is the **set's own block on
 > track 3**, which names the set a view belongs to outright, and it checks out
@@ -128,7 +158,9 @@ build/hlview --scene DUN1_CAM00 --mesh  # the collision mesh over the art
 build/hlview --check-mesh               # the triangle search, checked
 build/hlview --char 0 --anim 10 --play  # Quentin, walking
 build/hlview --scene DUN1_CAM04 --char 0 --anim 10 --walk --events
+build/hlview --scene DUN1_CAM04 --char 0 --drive        # the arrows drive him
 build/hlview --check-char               # the pose, against every frame's own extent
+build/hlview --check-doors              # the doorways, over the whole disc
 ```
 
 More in [src/README.md](src/README.md).

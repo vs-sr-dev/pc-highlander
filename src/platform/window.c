@@ -1,4 +1,6 @@
 #include "window.h"
+
+#include "../game/control.h"
 #include "../game/scene.h"
 
 #include <SDL3/SDL.h>
@@ -76,4 +78,15 @@ void window_poll(Input *in)
     const bool *keys = SDL_GetKeyboardState(NULL);
     in->dx = keys[SDL_SCANCODE_RIGHT] - keys[SDL_SCANCODE_LEFT];
     in->dz = keys[SDL_SCANCODE_DOWN]  - keys[SDL_SCANCODE_UP];
+
+    /* The same keys again, as the joypad long AICTRL.GAS reads.  The arrows
+     * are the pad; A, S and D are the three fire buttons, which nothing uses
+     * yet but which the logic table is shaped for. */
+    in->pad = 0;
+    if (keys[SDL_SCANCODE_UP])    in->pad |= 1u << JOY_UP;
+    if (keys[SDL_SCANCODE_DOWN])  in->pad |= 1u << JOY_DOWN;
+    if (keys[SDL_SCANCODE_LEFT])  in->pad |= 1u << JOY_LEFT;
+    if (keys[SDL_SCANCODE_RIGHT]) in->pad |= 1u << JOY_RIGHT;
+    if (keys[SDL_SCANCODE_A])     in->pad |= 1u << FIRE_A;
+    if (keys[SDL_SCANCODE_D])     in->pad |= 1u << FIRE_C;
 }

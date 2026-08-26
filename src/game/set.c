@@ -99,7 +99,7 @@ int set_load(Set *s, const char *track3, int index)
     for (int i = 0; i < s->ntris; i++) {
         const uint8_t *p = d + coll + troff + (size_t)i * 14;
         s->tri[i].height = be16s(p);
-        for (int k = 0; k < 3; k++) s->tri[i].vert[k] = (uint8_t)be16(p + 2 + k * 2);
+        for (int k = 0; k < 3; k++) s->tri[i].vert[k] = be16(p + 2 + k * 2);
         for (int k = 0; k < 3; k++) s->tri[i].adj[k]  = be16s(p + 8 + k * 2);
     }
 

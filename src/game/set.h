@@ -23,7 +23,9 @@ typedef struct { int32_t x, z; } SetVert;
 
 typedef struct {
     int16_t height;             /* world y of this piece of floor */
-    uint8_t vert[3];
+    uint16_t vert[3];           /* a word on the disc: CNY01 has 348
+                                   vertices, D1 300 and NEOSW 293, so a
+                                   byte silently folds their meshes  */
     int16_t adj[3];             /* neighbour across edge k = (vert[k], vert[k+1]),
                                    -1 for a wall.  The links are symmetric. */
 } SetTri;
@@ -34,11 +36,27 @@ typedef struct {
     int      scene;             /* block / 110, the slot index */
 } SetScene;
 
+/* A doorway.  The id is the view you were looking at when you *left*, which
+ * belongs to the set you came from - no entry on the disc is keyed on its own
+ * set's group, and for all 123 with a real id the departing set has a SCENE
+ * event, fired from that very view, that cuts into this one.  $FFFF is the
+ * arrival used when the view you left is not listed.
+ *
+ * The flags word is the arrival pose: the top byte is the facing on the
+ * 256-step circle and bit 0 says which character, 0 for the player and 1 for
+ * the companion.  All 153 entries are exactly `facing * 256 + (0 or 1)`, 44
+ * ids carry both halves of the pair, and the .MAP format says the same thing
+ * in words - two `START` blocks, `QUENTIN` and `RAMIREZ`, sharing one `FROM`,
+ * each with an `ORIENTATION` in degrees.  315 degrees is 224 steps, and 224
+ * is one of the twenty facings the disc uses.  docs/10-set-track.md 10.3. */
 typedef struct {
-    uint16_t id;                /* the view you arrive in */
-    uint16_t flags;
+    uint16_t id;                /* the view you left, not the one you arrive in */
+    uint16_t flags;             /* facing * 256 + character                     */
     int32_t  x, z;
 } SetEntry;
+
+#define ENTRY_FACING(e)    ((int)((e)->flags >> 8))
+#define ENTRY_COMPANION(e) ((e)->flags & 1)
 
 typedef struct {
     uint16_t scene;             /* $FFFF = any view in this set */

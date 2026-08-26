@@ -16,13 +16,33 @@ Reference implementation: [tools/set/setx.py](../tools/set/setx.py).
 +16  .l  InitOffset
 +20  .l  SceneOffset
 +24  .l  ScriptOffset
-+28  24   six longs, purpose unknown
++28  ..   a list of 12-byte records, ending where SceneOffset points
 +52  ..   the tables, laid out scene / init / event / collision / script
 ```
 
-The seven-long header is exactly July's `Set data structure`. The 24 bytes after
-it are not: they read `4, N, 0, 4, M, $10000` with `M = 6 * N`, and what they are
-for is open.
+The seven-long header is exactly July's `Set data structure`. What follows it is
+not 24 fixed bytes: it is a **list whose length varies**, and `MENU` is the set
+that proves it, because its `SceneOffset` is 64 rather than 52 and the extra
+twelve bytes are one more record of the same shape. Forty-six sets carry two,
+`MENU` and `LANG` carry three, and `H` carries one.
+
+Each record is three longs, `4, block, size`:
+
+```
+CA      4, $70,  0          4, $2A0, $10000
+DUN1    4, $0,   0          4, $460, $10000
+TENT1   4, $0,   0          4, $7A8, $10000
+MENU    4, $620, $10000     4, $818, $200000     4, 0, 0
+```
+
+Every `block` is a multiple of 56, and track 3 is exactly `48 * 56` blocks long,
+so they are set slots. The first record takes one of only five values across the
+disc - slots 0, 1, 2, 3 and 28 - and groups the sets into families: the whole
+`CNY` chain names slot 2, the `C`/`D` sets name slot 1, the dungeons and tents
+name slot 0. The second is nearly unique per set. They read as a **load list**,
+which is what the leading `4` and the trailing `$10000` suggest, and what they
+name exactly is still open - but "24 bytes, purpose unknown" is not what is
+there.
 
 ## 10.2 Scene table — and the scene id
 
@@ -72,9 +92,40 @@ A long count, then 12 bytes each:
 +8  .l  z
 ```
 
-These are arrival points, and they are addressed by the *borrowed* ids, which is
-what identifies them as the other side of a doorway. Set 0 has five, into groups
-40, 38 (twice) and 10 (twice).
+These are arrival points, and phase 4 needed them exactly rather than nearly.
+Both fields decode, and the direction the table runs in is the thing to get
+right.
+
+**The id is the view you are *leaving*, not the one you arrive in.** Not one of
+the 153 entries on the disc is keyed on its own set's group; every one names a
+scene belonging to somewhere else, or `$FFFF`. And the pairing is exact: of the
+123 with a real id, **all 123** have, in the set that owns that id, a `SCENE`
+event fired from that very view that cuts to a view of the arriving set's
+group. So a doorway is two halves - the departing set's event names the view
+you arrive at, and the arriving set's init entry, keyed on the view you left,
+names where you stand. `$FFFF` is the arrival for a view the far side does not
+list, and 41 of the disc's 129 cross-set cuts use it.
+
+**The flags word is the arrival pose.** All 153 entries are exactly
+`facing * 256 + c` with `c` 0 or 1: the top byte is the facing on the game's
+256-step circle, and the bottom bit says which character. 44 ids carry both
+halves of that pair. The `.MAP` format (§10.7) says the same thing in words -
+a doorway is two `START` blocks, `START QUENTIN` and `START RAMIREZ`, sharing
+one `FROM`, each with its own `ORIENTATION` in degrees. `ORIENTATION 315` is
+`315 * 256 / 360 = 224`, and 224 is one of the twenty facings the disc uses,
+appearing ten times.
+
+`hlview --check-doors` runs the whole thing: 153 of 153 entries decode and stand
+on their own set's collision mesh, and all 129 `SCENE` events that leave their
+set find an arrival on the far side - 88 keyed on the view being left, 41 by the
+default - with none of the arrivals off the arriving mesh.
+
+It also found a bug that had nothing to do with doorways: the engine was reading
+a triangle's vertex indices into a byte, and `CNY01` has 348 vertices, `D1` 300
+and `NEOSW` 293. Their meshes were silently folded, and `--check-mesh` could not
+see it because the search and the scan it is compared against were both reading
+the same folded mesh. Three of the 153 arrivals landed off the floor; with the
+index read as the word it is, none do.
 
 ## 10.4 Collision
 
@@ -234,7 +285,71 @@ So the sets with no July counterpart are groups **19, 27, 28** and **31**
 cave system that connects to seven other sets; 28 has nine scenes and is the one
 group 19 also borrows a view from.
 
-## 10.7 Using the tool
+## 10.7 The `.MAP` file: how a set was drawn
+
+Two of them survive in the source dump, `DUN1.MAP` and `DUN2.MAP`, and they are
+plain ASCII written by *Map Editor 1.211b, Designed and Coded by Matthew
+Jesson*. They are the **authoring form of everything on this track**, and worth
+reading in full because they say what the compiled tables cannot: what the
+designer was actually given to work with.
+
+A map is a **plan drawing over a bitmap**. `BLOCK BACKGROUND` names it -
+`DUN1.BMP` - on a 1280 x 960 canvas, and `BLOCK VERTEX` holds one shared list of
+2D points in that bitmap's pixels. Everything else refers to the list by index:
+
+```
+BLOCK COLLISION  NAME, NUM_VERTEX 3, VERTEX_LIST i j k, HEIGHT n
+BLOCK EVENT      NAME, VERTEX0 i, VERTEX1 j, HEIGHT n, PRIORITY p, SCENE name
+BLOCK START      NAME, VERTEX i, ORIENTATION deg, START who, FROM scene
+BLOCK CHARACTER  NAME, VERTEX i, HEIGHT n, TYPE t, ORIENTATION deg, RADIUS r
+BLOCK ORIGIN     NAME, VERTEX i, HEIGHT n
+BLOCK SCALE      NAME, VERTEX0 i, VERTEX1 j, DISTANCE d
+BLOCK SCENES     ( PICTURE, CAMERA, CACHE_SCENE0, CACHE_SCENE1 ) ...
+BLOCK CAMERAS    THREEDSTUDIO C:\DISK1\DUN1.3DS
+```
+
+**How plan pixels become world units.** `ORIGIN` names the vertex that is the
+world origin. `SCALE` names two vertices and the real distance between them,
+which the designer measured in the 3D Studio scene. So
+
+```
+k = DISTANCE * ZOOMDIV / (ZOOMMUL * |v0 - v1|)
+world = (pixel - origin) * k
+```
+
+For `DUN1` that is `39539 * 8 / (32 * 250.32) = 39.49` units per plan pixel, and
+measuring the exported mesh against the plan independently gives 39.54 across x
+and 39.90 across z. Reconstructing all 217 of the disc's collision vertices from
+the plan puts 182 of them within 20 units of where the disc has them, median
+3.8. The rest is five weeks of editing: this file is dated 10 July 1995 and has
+249 collision blocks against the disc's 248.
+
+**An event is a line, not a circle.** `VERTEX0` and `VERTEX1` are the two ends
+of a segment the player crosses. What §10.5 left open - whether the exporter
+turned each segment into one circle or into a row of them - is neither. DUN1's
+64 segments became 77 circles on the disc; the circles sit **on** the segments,
+median 4 units off, but the segments run from 198 to 9,054 units long while the
+circles' radii run 13 to 57. Forty-six segments carry one circle, ten carry two,
+one three and two four. A row would need 125 circles to cover the longest
+segment. So the exporter reduces a line to a handful of points on it, and that
+is exactly why a walk 76 units to one side misses a doorway: the line was
+continuous and what shipped is not. (The doubled ones are doubled events rather
+than doubled geometry - 87 of the disc's 1,092 `SCENE` circles carry two events,
+always naming consecutive scene ids.)
+
+**And there is no vertical calibration anywhere in the format.** `SCALE` is one
+horizontal segment. `ORIGIN` is one vertex, and its `HEIGHT` is 1 in both files.
+Every ground height in the set is the integer somebody typed into a `HEIGHT`
+field on a collision block, by eye, against a 3D Studio scene the editor could
+not read. That is the whole explanation of the ground gap (§13.6, §14.7): there
+is no datum in the pipeline that could have made the collision plane agree with
+the rendered floor, and no engine correction can be recovered because there is
+nothing for it to have been derived from.
+
+`CAMERAS` names the 3D Studio file the backdrops were rendered from. No `.3DS`
+is in the dump, which is the one thing that would settle the floors outright.
+
+## 10.8 Using the tool
 
 ```
 python tools/set/setx.py TRACK3

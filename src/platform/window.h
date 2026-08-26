@@ -15,6 +15,8 @@ typedef struct {
     int toggle_spin;
     int shot;
     int dx, dz;             /* held: nudge the object about the floor      */
+    uint32_t pad;           /* held, as the game's joypad long: the bits of
+                               control.h, straight off the keyboard         */
 } Input;
 
 int  window_open(const char *title, int scale);

@@ -218,17 +218,22 @@ height 801 -> floor   775        height  2473 -> floor  2468
 
 Over 2,500 units, no scale factor, no offset that matters.
 
-**What is left is a per-set gap between the collision plane and the drawn
-floor**, and session 8 measured it across the disc rather than in two sets. It
-runs from −50 in `SHANR3` to +348 in `PRI`, with `CA` at 155 and `DUN1` at 12,
-and it is not a constant, does not track the camera's height, and does not track
-either unexplained field of the camera footer. The table is
-[14-characters.md](14-characters.md) 14.7.
+**What is left is a gap between the collision plane and the drawn floor**, and
+session 8 measured it per set — −50 in `SHANR3` to +348 in `PRI`, with `CA` at
+155 and `DUN1` at 12. **That table is superseded.** The estimator behind it took
+the modal reconstructed height over a collision triangle's whole plan footprint,
+which holds the walls standing on the triangle and the props sitting on it as
+well as the floor; measured on the same triangle from two cameras it disagrees
+with itself by a median of 300 units, which is more than the gap it was reporting.
 
-A bottle 69 units tall sitting a little low was a curiosity. A character 414
-units tall standing in the same place is buried to the hips in `CA` and to the
-neck in `PRI`, so what the original did about it is now a question the port has
-to answer. It is open.
+Re-measured as the lowest flat surface a camera sees in a patch of plan — nothing
+is below the floor — and checked again by the engine itself, raising a model
+until the backdrop's Z-buffer stops hiding any of it, the gap is **local relief
+in the art of a few tens of units** rather than a per-set datum. `PRI` comes down
+from 348 to about 50, `CA` from 155 to between 20 and 90 depending where in `CA`
+you stand, and `DUN1` stays at about 12. The whole of it, and why there was never
+an engine correction to find, is [14-characters.md](14-characters.md) 14.7 and
+[10-set-track.md](10-set-track.md) 10.7.
 
 The second candidate, a vertical offset in the model, is ruled out for items:
 the nineteen models in the binary carry **no origin points at all**. The

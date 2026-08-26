@@ -10,6 +10,8 @@ game/         scene.c  a backdrop slot: XOR key, colour, depth, camera footer
                        COLLIDE.GAS does it
               set.c    one environment: views, doorways, events, and the floor
                        mesh, with the triangle search FINDTRI.GAS describes
+              control.c AICTRL.GAS: the joypad, and the animation it chooses -
+                       the double tap, the stance, and the turn
 r3d/          r3d.c    projection, matrices, scanline fill, Z-buffer
 platform/     window.c the only file that knows SDL exists
 util/         io.c     whole-file reads and big-endian accessors
@@ -29,7 +31,10 @@ build/hlview --scene DUN1_CAM00 --mesh             the collision mesh, over the 
 build/hlview --check-mesh                          the triangle search, checked
 build/hlview --char 0 --anim 10 --play             Quentin, walking on the spot
 build/hlview --scene DUN1_CAM00 --char 0 --anim 10 --walk --events
+build/hlview --scene DUN1_CAM04 --char 0 --drive   the arrows drive him
+build/hlview --scene DUN1_CAM04 --char 0 --drive --pad 'up:40,-:2,up:60'
 build/hlview --check-char                          the pose, checked
+build/hlview --check-doors                         the doorways, checked
 build/hlview --help
 ```
 

@@ -20,6 +20,7 @@
 #include "game/scene.h"
 #include "game/model.h"
 #include "game/anim.h"
+#include "game/control.h"
 #include "game/actor.h"
 #include "game/set.h"
 #include "r3d/r3d.h"
@@ -32,9 +33,10 @@ typedef struct {
     const char *model;
     const char *object;
     const char *shot;
+    const char *pad;
     int   no_window, depth, spin, wire, shade, scale, frames;
     int   mesh, no_ground;
-    int   character, anim, frame, play, walk, events;
+    int   character, anim, frame, play, walk, events, drive;
     int   have_pos, pos[3];
     int   have_face, face[3];
     R3dCull cull;
@@ -273,6 +275,87 @@ static void cast_free(Cast *c)
     io_free(&c->ms.file);
     free(c->anim);
     io_free(&c->file);
+}
+
+/* ---- the doorways, checked ----------------------------------------- */
+
+/* A doorway is two halves that have to agree.  One half is a SCENE event that
+ * cuts to a view another set owns; the other is that set's init entry, keyed
+ * on the view being left rather than the one being arrived at - no entry on
+ * the disc is keyed on its own group.  So walk every SCENE event on the disc
+ * that leaves its set, and ask the set on the other side where it would put
+ * the character.  Two things can go wrong and both are counted: the arriving
+ * set may list no entry for that view and no default, and the entry it does
+ * list may be off its own collision mesh, which would leave the character
+ * nowhere.  docs/10-set-track.md 10.3. */
+static int check_doors(void)
+{
+    Set cache[SET_COUNT];
+    int  have[SET_COUNT];
+    for (int i = 0; i < SET_COUNT; i++)
+        have[i] = set_load(&cache[i], path_set, i);
+
+    int entries = 0, on_mesh = 0, paired = 0, faces = 0;
+    for (int i = 0; i < SET_COUNT; i++) {
+        if (!have[i]) continue;
+        for (int k = 0; k < cache[i].nentries; k++) {
+            const SetEntry *e = &cache[i].entry[k];
+            entries++;
+            if (ENTRY_FACING(e) >= 0 && ENTRY_FACING(e) < 256 &&
+                (e->flags & 0xFE) == 0)
+                faces++;
+            if (cache[i].ntris && set_locate(&cache[i], e->x, e->z) >= 0)
+                on_mesh++;
+        }
+    }
+
+    int leaves = 0, found = 0, defaulted = 0, missing = 0, off = 0;
+    for (int i = 0; i < SET_COUNT; i++) {
+        if (!have[i]) continue;
+        for (int v = 0; v < cache[i].nevents; v++) {
+            const SetEvent *ev = &cache[i].event[v];
+            if (ev->type != 0) continue;                /* EVENT_TYPE_SCENE */
+            int ti = set_of_scene(path_set, ev->data[0]);
+            if (ti < 0 || ti == i || !have[ti]) continue;
+            leaves++;
+            /* The view being left: the event names it when it is not $FFFF,
+             * and otherwise it is whichever of this set's views the player
+             * happened to be in, so try them all and take the first that the
+             * far side lists. */
+            const SetEntry *door = NULL, *any = NULL;
+            for (int k = 0; k < cache[ti].nentries; k++) {
+                const SetEntry *e = &cache[ti].entry[k];
+                if (ENTRY_COMPANION(e)) continue;
+                if (e->id == 0xFFFF) { if (!any) any = e; continue; }
+                if (ev->scene != 0xFFFF) {
+                    if (e->id == ev->scene) door = e;
+                } else {
+                    for (int j = 0; j < cache[i].nscenes && !door; j++)
+                        if (cache[i].scene[j].id == e->id) door = e;
+                }
+            }
+            if (door)      found++;
+            else if (any) { defaulted++; door = any; }
+            else           missing++;
+            if (door && cache[ti].ntris &&
+                set_locate(&cache[ti], door->x, door->z) < 0)
+                off++;
+        }
+    }
+
+    printf("init entries: %d over %d sets\n", entries, SET_COUNT);
+    printf("  %d of %d have flags = facing * 256 + character\n", faces, entries);
+    printf("  %d of %d stand on their own set's collision mesh\n",
+           on_mesh, entries);
+    printf("doorways: %d SCENE events cut into another set\n", leaves);
+    printf("  %d find an entry keyed on the view being left,"
+           " %d fall back to the set's default, %d find neither\n",
+           found, defaulted, missing);
+    printf("  %d of the arrivals are off the arriving set's mesh\n", off);
+
+    for (int i = 0; i < SET_COUNT; i++)
+        if (have[i]) set_free(&cache[i]);
+    return missing == 0 && off == 0 && faces == entries;
 }
 
 /* ---- the floor, checked -------------------------------------------- */
@@ -517,7 +600,7 @@ static void draw_actor(R3dTarget *t, const Bundle *b, const ActorPose *pose,
 static void usage(void)
 {
     puts(
-"hlview - Highlander phase 3 viewer\n"
+"hlview - the Highlander engine, phases 3 and 4\n"
 "\n"
 "  --tracks DIR      extracted tracks (default assets/tracks)\n"
 "  --manifest FILE   default assets/manifest.json\n"
@@ -537,7 +620,16 @@ static void usage(void)
 "  --no-window       render without opening a window\n"
 "  --frames N        stop after N frames\n"
 "  --scale N         window magnification (default 3)\n"
-"  --list-scenes | --list-models | --list-objects\n");
+"  --char N          one of track 5's fifteen-piece character bundles\n"
+"  --anim N | --frame N   which animation, and which frame of it\n"
+"  --play | --walk   run the animation; walk it over the set's floor\n"
+"  --drive           the joypad picks the animation and the root motion\n"
+"                    moves him, the way AICTRL.GAS has it\n"
+"  --pad SPEC        a scripted pad for --drive, keys:frames separated\n"
+"                    by commas - up:40,-:2,up:60 is a double tap\n"
+"  --events          fire the set's events: the camera cuts, and the doors\n"
+"  --list-scenes | --list-models | --list-objects | --list-chars\n"
+"  --check-mesh | --check-char | --check-doors\n");
 }
 
 static int parse_triple(const char *s, int *out)
@@ -545,11 +637,64 @@ static int parse_triple(const char *s, int *out)
     return sscanf(s, "%d,%d,%d", &out[0], &out[1], &out[2]) == 3;
 }
 
+
+/* ---- a scripted joypad --------------------------------------------- */
+
+/* --pad holds keys down for a given number of frames, so a run can be
+ * reproduced without a window: "up:40,-:2,up:60" walks, lets go for two
+ * frames and presses again, which is the double tap PlayerControl is looking
+ * for.  The names are control.h's bits. */
+typedef struct { uint32_t pad; int frames; } PadStep;
+
+static PadStep pad_script[32];
+static int     pad_steps;
+
+static int parse_pad(const char *spec)
+{
+    pad_steps = 0;
+    while (*spec && pad_steps < 32) {
+        uint32_t bits = 0;
+        while (*spec && *spec != ':' && *spec != ',') {
+            static const struct { const char *n; int b; } key[] = {
+                { "up", JOY_UP }, { "down", JOY_DOWN }, { "left", JOY_LEFT },
+                { "right", JOY_RIGHT }, { "a", FIRE_A }, { "b", FIRE_B },
+                { "c", FIRE_C }, { NULL, 0 }
+            };
+            int n = 0;
+            while (spec[n] && spec[n] != '+' && spec[n] != ':' && spec[n] != ',')
+                n++;
+            for (int k = 0; key[k].n; k++)
+                if ((int)strlen(key[k].n) == n && !strncmp(spec, key[k].n, n))
+                    bits |= 1u << key[k].b;
+            spec += n;
+            if (*spec == '+') spec++;
+        }
+        int frames = 1;
+        if (*spec == ':') frames = atoi(++spec);
+        while (*spec && *spec != ',') spec++;
+        if (*spec == ',') spec++;
+        pad_script[pad_steps].pad = bits;
+        pad_script[pad_steps].frames = frames > 0 ? frames : 1;
+        pad_steps++;
+    }
+    return pad_steps;
+}
+
+static uint32_t pad_at(int frame)
+{
+    for (int i = 0; i < pad_steps; i++) {
+        if (frame < pad_script[i].frames)
+            return pad_script[i].pad;
+        frame -= pad_script[i].frames;
+    }
+    return pad_steps ? pad_script[pad_steps - 1].pad : 0;
+}
+
 int main(int argc, char **argv)
 {
-    Args a = { "assets/tracks", "assets/manifest.json", NULL, NULL, NULL, NULL,
+    Args a = { "assets/tracks", "assets/manifest.json", NULL, NULL, NULL, NULL, NULL,
                0, 0, 0, 0, 1, 3, 0, 0, 0,
-               -1, 0, -1, 0, 0, 0,
+               -1, 0, -1, 0, 0, 0, 0,
                0, {0,0,0}, 0, {0,0,0},
                R3D_CULL_NONE, 0, 0, 0, 0 };
 
@@ -575,6 +720,8 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--frame")    && v) a.frame = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--play"))      a.play = 1;
         else if (!strcmp(argv[i], "--walk"))      a.walk = 1;
+        else if (!strcmp(argv[i], "--drive"))     a.drive = 1;
+        else if (!strcmp(argv[i], "--pad")      && v) a.pad = argv[++i];
         else if (!strcmp(argv[i], "--events"))    a.events = 1;
         else if (!strcmp(argv[i], "--depth"))     a.depth = 1;
         else if (!strcmp(argv[i], "--mesh"))      a.mesh = 1;
@@ -589,10 +736,12 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--list-chars"))   a.list_chars = 1;
         else if (!strcmp(argv[i], "--check-mesh")) { paths(a.tracks); return !check_mesh(); }
         else if (!strcmp(argv[i], "--check-char")) { paths(a.tracks); return !check_char(); }
+        else if (!strcmp(argv[i], "--check-doors")) { paths(a.tracks); return !check_doors(); }
         else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) { usage(); return 0; }
         else { usage(); return argv[i][0] == '-' ? 1 : 0; }
     }
     paths(a.tracks);
+    if (a.pad) parse_pad(a.pad);
 
     Index ix;
     if (!index_open(&ix, a.manifest))
@@ -882,7 +1031,12 @@ int main(int argc, char **argv)
     R3dOpts opts = { a.cull, a.shade, a.wire };
     int spin = 0, show_depth = a.depth, spinning = a.spin, shots = 0;
     int last_tri = actor.tri, last_ground = actor.ground, last_collided = 0;
-    Input in = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    Input in = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+    /* The player, driven: AICTRL.GAS's own state, one record of it. */
+    Control ctl;
+    control_init(&ctl);
+    int last_stance = 0xFF, last_anim = -2;
 
     int windowed = !a.no_window;
     if (windowed && !window_open("Highlander viewer", a.scale > 0 ? a.scale : 3))
@@ -1053,11 +1207,44 @@ int main(int argc, char **argv)
          * 256 / fps, so at the animations' own 20 fps that is 12. */
         if (bundle) {
             int frate = anim && anim->fps ? 256 / anim->fps : 12;
-            if (a.walk)
+            if (a.drive && have_set) {
+                /* AICTRL.GAS, in its own order: read the pad, choose the
+                 * animation from it and the stance, turn, and only then let
+                 * the animation move the character.  Nothing here moves him
+                 * directly - the root motion does all of it. */
+                int fps = anim && anim->fps ? anim->fps : 20;
+                control_pad(&ctl, a.pad ? pad_at(frame) : in.pad);
+                int playing = anim && actor.frame + 1 < anim->frames;
+                control_action(&ctl, &control_quentin, playing);
+                if (ctl.restarted) {
+                    int k = ctl.anim;
+                    if (k >= 0 && k < cast.nanim[a.character]) {
+                        const Anim *pick =
+                            &cast.anim[cast.first_anim[a.character] + k];
+                        if (pick != anim) {
+                            anim = pick;
+                            frate = anim->fps ? 256 / anim->fps : 12;
+                        }
+                        /* Start it again from the top: the next step wraps to
+                         * frame zero, which is also where the lift resets. */
+                        actor.frame = anim->frames - 1;
+                    }
+                }
+                actor.facing = (uint8_t)(actor.facing + control_turn(&ctl, fps));
+                if (anim)
+                    actor_step(&actor, &set, anim, frate);
+                if (ctl.stance != last_stance || ctl.anim != last_anim) {
+                    printf("frame %4d: %-5s animation %2d%s\n", frame,
+                           control_stance_name(ctl.stance), ctl.anim,
+                           (ctl.pad & PAD(JOY_DOUBLE)) ? "   (double tap)" : "");
+                    last_stance = ctl.stance;
+                    last_anim   = ctl.anim;
+                }
+            } else if (a.walk)
                 actor.facing = (uint8_t)(actor.facing + in.dx * 3);
-            if (a.play && anim && have_set) {
+            if (!a.drive && a.play && anim && have_set) {
                 actor_step(&actor, &set, anim, frate);
-            } else if (a.play && anim) {
+            } else if (!a.drive && a.play && anim) {
                 AnimFrame fr;
                 actor.frame = (actor.frame + 1) % anim->frames;
                 if (actor.frame == 0)
@@ -1065,7 +1252,7 @@ int main(int argc, char **argv)
                 anim_frame(anim, actor.frame, &fr);
                 actor.lift += fr.move[1];
                 actor.facing = (uint8_t)(actor.facing + fr.turn);
-            } else if (a.walk && have_set) {
+            } else if (!a.drive && a.walk && have_set) {
                 if (in.dz) {
                     /* Facing 0 looks down +z: the same rotation ANIM.GAS puts
                      * a frame's own root motion through. */
@@ -1081,7 +1268,7 @@ int main(int argc, char **argv)
             /* Say when the floor underfoot changes - which triangle, how
              * high, and whether a wall stopped the move.  That is the whole of
              * what movement over the mesh has to get right. */
-            if ((a.walk || a.play) && have_set &&
+            if ((a.walk || a.play || a.drive) && have_set &&
                 (actor.tri != last_tri || actor.ground != last_ground ||
                  actor.collided != last_collided)) {
                 printf("frame %4d: (%6d,%6d) triangle %3d floor %5d y %5d"
@@ -1093,8 +1280,9 @@ int main(int argc, char **argv)
                 last_collided = actor.collided;
             }
 
-            if (a.events && have_set && have_scene) {
+            if ((a.events || a.drive) && have_set && have_scene) {
                 int id = events_scan(&set, scene.cam.id, &actor);
+                uint16_t from_id = scene.cam.id;   /* the view being left */
                 if (id >= 0) {
                     int target_scene = -1;
                     for (int i = 0; i < set.nscenes; i++)
@@ -1106,21 +1294,52 @@ int main(int argc, char **argv)
                         printf("cut to %s (id %d) at (%d,%d) on triangle %d\n",
                                index_scene_name(&ix, scene_index), id,
                                actor.x, actor.z, actor.tri);
-                        /* A doorway leads into another set, and its floor and
-                         * its events are the ones that matter from now on. */
-                        if (id / 64 != (int)(set.scene[0].id / 64) ||
-                            !set_contains(&set, actor.tri, actor.x, actor.z)) {
-                            int si = scene_set(&scene.cam);
-                            if (si < 0 || si >= SET_COUNT)
-                                si = set_of_scene(path_set, scene.cam.id);
-                            Set next;
-                            if (si >= 0 && si != set.index &&
-                                set_load(&next, path_set, si)) {
-                                set_free(&set);
-                                set = next;
+                        /* A doorway is a cut to a view another set owns: its
+                         * floor and its events are the ones that matter from
+                         * now on, and the two sets do not share an origin, so
+                         * the character has to be put down again rather than
+                         * carried across.  Where he lands is 10.3's init
+                         * table, keyed on the view he is leaving. */
+                        int si = set_of_scene(path_set, (uint16_t)id);
+                        if (si < 0) {
+                            si = scene_set(&scene.cam);
+                            if (si >= SET_COUNT) si = -1;
+                        }
+                        Set next;
+                        if (si >= 0 && si != set.index &&
+                            set_load(&next, path_set, si)) {
+                            set_free(&set);
+                            set = next;
+                            const SetEntry *door = NULL, *any = NULL;
+                            for (int k = 0; k < set.nentries; k++) {
+                                const SetEntry *e = &set.entry[k];
+                                if (ENTRY_COMPANION(e))
+                                    continue;       /* that one is Ramirez */
+                                if (e->id == from_id)            door = e;
+                                else if (e->id == 0xFFFF && !any) any  = e;
+                            }
+                            if (!door) door = any;
+                            if (door) {
+                                if (actor_place(&actor, &set, door->x, door->z,
+                                                ENTRY_FACING(door)))
+                                    printf("  through the door into set %d:"
+                                           " arriving at (%d,%d) facing %d,"
+                                           " from view %d%s\n", si,
+                                           actor.x, actor.z, actor.facing,
+                                           from_id,
+                                           door->id == 0xFFFF ?
+                                             " (the default entry)" : "");
+                                else
+                                    printf("  into set %d, but the entry for"
+                                           " view %d is off its mesh\n", si,
+                                           from_id);
+                                last_tri = actor.tri;
+                                last_ground = actor.ground;
+                            } else {
                                 actor_place(&actor, &set, actor.x, actor.z,
                                             actor.facing);
-                                printf("  and into set %d\n", si);
+                                printf("  into set %d, which lists no entry"
+                                       " for view %d\n", si, from_id);
                             }
                         }
                     } else if (target_scene < 0) {

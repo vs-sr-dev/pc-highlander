@@ -1,9 +1,12 @@
 # 14 — The character: fifteen pieces, one pose, and the floor under it
 
-Status: **the assembly is settled and checked.** `hlview --char N` loads one of
-track 5's fifteen-piece bundles, chains it through its origin points, poses it
-at a frame of one of its animations, stands it on a set's collision mesh, walks
-it about, and cuts the camera when it crosses a `SCENE` event.
+Status: **the assembly is settled and checked, and the pad now drives it.**
+`hlview --char N` loads one of track 5's fifteen-piece bundles, chains it through
+its origin points, poses it at a frame of one of its animations, stands it on a
+set's collision mesh, and walks it about. The joypad picks the animation and the
+animation's own root motion does the moving, the way `AICTRL.GAS` has it (14.8);
+a `SCENE` event cuts the camera, and one that names a view another set owns
+carries him through the doorway into that set (14.9).
 
 This is the first thing in the port where the model format, the animation format
 and the skeleton all have to agree with each other, so it needed a test that
@@ -247,41 +250,205 @@ ours did, simply misses it. Whether the retail exporter turned the `.MAP`
 format's event *line segments* ([03-data-formats.md](03-data-formats.md) 3.6)
 into single circles or into rows of them is worth settling.
 
-## 14.7 What the character makes urgent: the ground gap
+## 14.7 The ground gap, and what it turned out to be
 
-A 69-unit wine bottle sitting a little low was a curiosity
-([13-viewer.md](13-viewer.md) 13.6). A 414-unit character standing in the same
-place is buried to the hips, and in one set to the neck, so the gap between the
-collision plane and the floor the backdrops draw now has to be settled.
+Session 8 measured a gap between the collision plane and the floor the backdrops
+draw, per set, and read off a table that ran from -50 in `SHANR3` to +348 in
+`PRI`, with `CA` at 155 - which put a 414-unit character in `CA` in the ground to
+the hips and in `PRI` to the neck. That table was the wrong measurement, and
+correcting it is most of what this question needed.
 
-It is measured, per set, by inverting the Z-buffer
-([tools/scene/backproj.py](../tools/scene/backproj.py) `--ground`). For the
-sets whose mesh is a single level, so that the number means one thing:
+**It is not a per-set number, and the first sign is inside a single set.**
+Running the same estimator per camera rather than pooling all of a set's cameras
+gives, for `DUN1` alone, figures from -259 to +283. Cameras that share a
+position give byte-identical answers, so the spread is not noise in the
+reconstruction; it is the estimator answering a different question for each
+camera.
 
-| set | gap | set | gap | set | gap |
-|---|---:|---|---:|---|---:|
-| `PRI` | 348 | `TENT6` | 76 | `DUN2` | 17 |
-| `CA` | 155 | `TENT3` | 54 | `C3` | 15 |
-| `REST` | 112 | `C2` | 56 | `DUN1` | 12 |
-| `TRAIN` | 102 | `SHANR2` | 56 | `D3` | 7 |
-| `CN4` | 96 | `TA` | 72 | `CN5` | 3 |
-| `TENT5` | 77 | | | `SHANR3` | −50 |
+**What it was measuring.** The estimator took the modal reconstructed height
+over every pixel whose plan position falls inside a collision triangle. A
+triangle's footprint in plan does not contain only floor: it contains the wall
+standing on its edge, the crate in the middle of it, and the parts of it the
+camera cannot see. Measured on the same triangle from two cameras, that estimate
+disagrees with itself by a **median of 300 units** - more than the gap it was
+being used to report.
 
-It is **not a constant**, so it is not a datum the engine adds. It does not
-track the camera's height (r = −0.39) or either unexplained field of the camera
-footer (r = +0.15, −0.41). And it is not a scale error: `D1`, which is built in
-storeys, still fits `floor = 0.962 * height + 36.7` over heights from 1 to
-2,473.
+**Measured properly.** Nothing is below the floor, so the floor is the *lowest
+flat surface* a camera sees in a given patch of plan, and where two cameras can
+both see it they agree. Re-run that way over 100-unit cells:
 
-So the collision plane really does sit under the drawn ground by a per-set
-amount, and where that amount is large the character stands in it. What the
-engine did about it is the open question this session hands on. Three places
-worth looking: the 24 unexplained bytes after each set header
-([10-set-track.md](10-set-track.md) 10.1), the light list that has never been
-located, and the possibility that the original simply lived with it and the sets
-where it is worst are ones the player never stands in.
+```
+43 sets: gap median -5, mean -7, sd 61, range -105 .. +136
+  PRI 348 -> 45      CA 155 -> 89      REST 112 -> -72
+  DUN1  12 -> 13     SHANR2 56 -> 48   SHANR3 -50 -> -57
+```
 
-## 14.8 Using it
+The sets that barely move are the ones session 8's number was already right
+about; the ones that move are the ones with things standing on the floor.
+
+**And then measured a fourth way, without any of that machinery.** `hlview`
+already counts how many pixels of a model survive the backdrop's own Z-buffer.
+Raise a model a step at a time and the height at which the backdrop stops hiding
+any of it *is* the drawn floor, measured by the engine, with no reconstruction,
+no projection inverse and no assumption about what is floor. In `PRI`, at the
+doorway, the 69-unit wine bottle standing at collision height 1 keeps 2 of its
+23 pixels, and is completely clear by y = 60. Not 348.
+
+The probe is an **upper bound**, because it asks for every pixel to be clear and
+a crate standing in front raises it. So the figure to read is the lowest it
+gives across several places in a set, and running it over triangle centroids
+answers the question by not agreeing with itself:
+
+```
+DUN1   10   20   30   30   60   330        CA   20   50  110  190
+PRI    59
+```
+
+Three sets, three ways, against session 8's table:
+
+| set | session 8 | re-measured | engine probe, lowest of several places |
+|---|---:|---:|---:|
+| `DUN1` | 12 | 13 | 10 |
+| `CA` | 155 | 89 | 20 |
+| `PRI` | 348 | 45 | 59 |
+
+`DUN1`, which session 8 got right, all three agree on. The two it got wrong come
+down by a factor of three to seven, and the two new methods bracket rather than
+match - which is the honest state of it, because they are measuring the floor
+under different square metres of the same room.
+
+**So the gap is relief in the art, and it is local.** It is not a constant, not a
+per-set datum, and not something the engine subtracted, because - §10.7 - there
+is nothing in the pipeline it could have been derived from. The map editor
+calibrates the horizontal plane and only the horizontal plane: one `SCALE`
+segment, one `ORIGIN` vertex, and a ground height that is an integer somebody
+typed into a `HEIGHT` field by eye. The third of session 8's three candidates is
+the right one: **the original lived with it.**
+
+What it costs is worth stating in pixels rather than units, because that is what
+the player saw. `PRI_CAM00` looks at that doorway from about 2,200 units away,
+where the projection puts 59 units of error at 6.6 pixels and a 414-unit
+character at 46 pixels tall. Ankle deep, on a 320x200 screen.
+
+**Two things ruled out on the way.** The 24 bytes after the set header are a
+load list and not a datum - §10.1, where they are now decoded as far as their
+shape. And the projection constants are not the cause: fitting them from
+camera-to-camera agreement alone, over 220 distinct cameras in seven sets, leaves
+`XSCALE` and the principal column exactly where the viewer has them and `YSCALE`
+flat from 236 to 261. The principal *row* appears on that criterion to want 90
+rather than 99, which would be worth a great deal if it held - but it does not.
+A collision triangle is flat by construction, so the surface drawn over it has to
+reconstruct level, and minimising that tilt puts the row at 104, on the other
+side of 99. Two independent criteria disagreeing means the first one was
+measuring its own flatness filter. The constants stand.
+
+## 14.8 The player, driven
+
+The original never moves the player. It reads the pad, picks an animation from a
+table, and lets that animation's own root motion do the walking - which is why
+the viewer had `--play` and `--walk` as two separate things and why joining them
+is what turns it into a game. Two loops of `AICTRL.GAS` do the whole of it, and
+`src/game/control.c` is both.
+
+**`PlayerControl` makes `actJoypad` out of the hardware pad**, and two things
+happen on the way that the pad alone does not say.
+
+* `actCount` counts frames since JOY_UP was last held, and while that count is
+  1, 2 or 3 the code **forces JOY_UP back on** - in a branch delay slot, so it
+  happens whether or not the test after it is reached. Letting go of forward for
+  under a fifth of a second does not stop the walk.
+* Press again inside that window and JOY_DOUBLE is set as well. **The double tap
+  is detected by the pad handler, not by the animation table**, and it is how
+  you run.
+* `slowtowalk`, a global byte the scripts set, rewrites the stance in place: 4
+  into 3, jog into walk, clearing FSAPlay so the change takes at once. Those two
+  numbers are the only stance values the source names outright, and they are
+  what fixes the rest of ours.
+
+**`ActionCode` then walks a logic table.** It is a list of tuples, each headed by
+a joypad mask, and the first tuple all of whose bits are held wins - so the list
+is a priority order and the last mask is zero, which is what makes the unbounded
+search terminate. The matched tuple holds eight entries and the low three bits of
+`citStance` choose between them, so **what a button does depends on what the
+character is already doing**: forward from a stand is a walk, forward from a jog
+stays a jog, and a direction held while walking steers where from a stand it
+plays the turn on the spot. Each entry names an animation and the stance to move
+to, and the animation restarts when the masked pad changes, when the last one has
+run out, or when the entry names a different one.
+
+**Turning is separate and additive.** JOY_LEFT and JOY_RIGHT turn the facing by
+`4 * 20 / framerate` steps of the 256-step circle - four a frame at the
+animations' own 20 fps - unless the new stance carries FSATurn, which says the
+animation is turning by itself. That the two rates are the same rate is not an
+assumption: Quentin's turn-on-the-spot animation turns 62 steps over 15 frames,
+which is 4.1 a frame. A character can hand the turn to the animation and the
+speed does not change.
+
+**Which animation is which, from the data.** The table needs to name Quentin's
+thirty animations and `SHEET.S` says where they come from - three loads of 14,
+14 and 2 from `BO_ANIM_QUENTIN_HAND1..3`, with the sword and gun banks living on
+the weapon's own sheet, which is what `.weapon_action` reaches for. Which one is
+the walk is read off their root motion rather than guessed:
+
+```
+  6   24 frames, the root barely moves               stand
+ 10   18 frames, +411 along z, 22.8 units a frame    walk forward
+ 11   16 frames, +623, 38.9 a frame                  run
+ 12   17 frames, -280, 16.5 a frame                  walk backward
+ 15   15 frames, +62 of facing, 4.1 a frame          turn left on the spot
+ 16   14 frames, -61 of facing, 4.4 a frame          turn right
+```
+
+Animation 10 is the one session 8's walk already used, which settles the sign:
++z is forward.
+
+**What is the original's and what is ours.** The mechanism, the stance bits, the
+rotate rate, the double-tap window and `slowtowalk` are `AICTRL.GAS`'s. The
+*table* is ours, and it is marked as ours in the code, because the real ones are
+five CD files that `DATA.INC` names - `BO_LOGICS_1` "full", `2A` "stand & walk",
+`2B` "stand & walk - no turn anims", `3A` "stand", `3B` "stand - no turn anims" -
+at block offsets $0, $10, $20, $30 and $40 of the data type `VIDSTUFF.INC` calls
+`CHARDATA` and annotates "jakes joypad logics". Where the retail disc put them is
+not known; scanning every track for the structure `ActionCode` reads finds only a
+clamp table in the binary. That is the one piece of this section still missing.
+
+```
+frame    0: walk  animation 10
+frame   42: jog   animation 11   (double tap)
+frame  106: stand animation  6
+frame  132: turn  animation 15
+frame  162: walk  animation 10
+```
+
+That is `hlview --scene DUN1_CAM04 --char 0 --drive --pad 'up:40,-:2,up:60,-:30,left:30,up:40'`,
+and the frame numbers are the mechanism: the release at frame 102 does not reach
+`stand` until 106, three frames of grace later, and the two-frame release at 40
+comes back as a jog rather than a walk.
+
+## 14.9 Through the door
+
+`--events` cut the camera inside a set. Crossing into another one is the same
+event doing more work, and §10.3 is the half that had to be settled first: the
+arriving set's init table is keyed on **the view you are leaving**, and its flags
+word is `facing * 256 + character`. Both hold for all 153 entries on the disc.
+
+So the engine, on a `SCENE` event whose target view another set owns, loads that
+set, looks up the entry keyed on the view being left, falls back to the set's
+`$FFFF` default, and stands the character there facing the way the entry says.
+The two sets do not share an origin, so he has to be put down again rather than
+carried across - which is exactly what the init table exists to say.
+
+```
+cut to CNY08_CAM12 (id 780) at (-4304,3903) on triangle 38
+  through the door into set 8: arriving at (6099,1290) facing 213, from view 832
+```
+
+`hlview --check-doors` runs it over the disc rather than over one walk: 153 of
+153 entries decode and stand on their own set's mesh, and all 129 `SCENE` events
+that leave their set find an arrival - 88 keyed, 41 by the default, none off the
+far mesh.
+
+## 14.10 Using it
 
 ```
 hlview --list-chars                                  the fourteen bundles
@@ -289,6 +456,9 @@ hlview --char 0 --anim 10 --play                     Quentin, walking on the spo
 hlview --scene DUN1_CAM00 --char 0 --anim 10 --walk  arrows turn and walk
 hlview --scene DUN1_CAM04 --char 0 --anim 10 --play --events --frames 400
 hlview --check-char                                  the pose, checked
+hlview --scene DUN1_CAM04 --char 0 --drive           the pad drives him (14.8)
+hlview --scene CNY09_CAM00 --char 0 --drive --pad 'up:250' --pos '-2574,0,3398' --face '0,192,0'
+hlview --check-doors                                 the doorways, checked
 ```
 
 `--frame N` holds one frame, `--pos X,Y,Z` and `--face E,A,T` place it, and
