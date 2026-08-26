@@ -14,6 +14,7 @@ int model_parse(Model *m, const uint8_t *d, size_t size, long off)
 
     const uint8_t *h = d + off;
     unsigned len      = be16(h);
+    unsigned onum     = h[2];
     unsigned norigins = h[3];
     unsigned nv       = be16(h + 4);
     unsigned nf       = be16(h + 6);
@@ -70,8 +71,20 @@ int model_parse(Model *m, const uint8_t *d, size_t size, long off)
         for (int k = 0; k < 3; k++)
             m->vert[i][k] = be16s(d + vo + i * 8 + (size_t)k * 2);
 
+    /* The fourth word is 1 on a drawn vertex and the origin's own number on an
+     * origin point - 128..255, which is how the pieces of a character name the
+     * joints they hand on to each other. */
+    m->origin_id = NULL;
+    if (norigins) {
+        m->origin_id = malloc(norigins);
+        if (!m->origin_id) { free(facets); free(m->vert); m->vert = NULL; return 0; }
+        for (unsigned i = 0; i < norigins; i++)
+            m->origin_id[i] = (uint8_t)be16(d + vo + (nv + i) * 8 + 6);
+    }
+
     m->offset   = off;
     m->base     = base;
+    m->origin   = (int)onum;
     m->nverts   = (int)nv;
     m->norigins = (int)norigins;
     m->nfacets  = (int)nf;
@@ -110,8 +123,10 @@ int model_scan(const uint8_t *d, size_t size, int min_verts, Model **out)
 void model_free(Model *m)
 {
     free(m->vert);
+    free(m->origin_id);
     free(m->facet);
     m->vert = NULL;
+    m->origin_id = NULL;
     m->facet = NULL;
 }
 

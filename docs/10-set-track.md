@@ -53,6 +53,14 @@ to more than one set, because a set also lists the first view of each set you
 can walk into from it. Those borrowed entries are easy to spot — their group is
 not the set's own.
 
+**And the scene says so itself.** The camera footer's long at +32, which
+session 3 recorded as a constant 672 from one sample, is the set's own block
+offset on this track: a multiple of 56, the slot size, so dividing by 56 names
+the set. For all 672 scenes the set it names is one whose table lists that
+scene id, and every one of the 48 sets is named by at least one view
+([07-scene-format.md](07-scene-format.md) 7.5). That is a direct link where
+10.6 below has to vote, and it settles the sets too small to vote on.
+
 ## 10.3 Init table — the doorways
 
 A long count, then 12 bytes each:
@@ -132,6 +140,19 @@ An event is a circle on the floor plan: the GPU module walks the list every
 frame and fires anything the player is inside. The status word is written back
 into the data, which is how "already triggered" and the delayed-event countdown
 are stored.
+
+Three details of `EVENT.GAS` that phase 4 needed exactly
+([14-characters.md](14-characters.md) 14.6): the height word, when it is not
+zero, is a **ceiling** and the event fires from at or below it; a radius of zero
+means always colliding; and a `SCENE` event fires even when the status word
+already says the player is inside, which no other type does.
+
+**The circles are small.** Over the disc's 1,203 `SCENE` events the radius runs
+from 4 to 107 units, median 27 — against a character 414 units tall who covers
+21 units in one frame of the walk. They are thresholds to cross rather than
+regions to occupy, and a path 76 units to one side of one misses it entirely.
+Whether the retail exporter turned the `.MAP` format's event *line segments*
+(3.6) into one circle each or into rows of them is not settled.
 
 What is actually on the disc:
 

@@ -137,11 +137,23 @@ mis-decodes.
 +0   .w   scene id          unique per scene, 64 .. 3084, always increasing
 +2   9.w  rotation matrix   3x3, s1.14
 +20  3.l  translation       x, y, z
-+32  1.l  672               the same value in every scene
++32  1.l  the set           its block offset on the set track, a multiple of 56
 +36  2.l  zero
 +44  .w   varies            per scene: 234, 197, 300, 144, 100, 259, ...
 +46  .w   zero
 ```
+
+**+32 names the set the view belongs to.** Session 3 read it as the constant
+672 from one scene; it is not constant. Every one of the 672 values is a
+multiple of **56**, which is the number of blocks in one set slot on track 3, so
+it is that set's own block offset and dividing by 56 gives the set index. It
+checks out on the whole disc: for **all 672 scenes**, the set it names is one
+whose scene table lists that scene id, and all 48 sets are named by at least one
+view. It is therefore a stronger scene-to-set link than the group vote of
+[10-set-track.md](10-set-track.md) 10.6, which cannot decide the two- and
+three-view sets - and where the two disagree, on `DUN1_CAM20` and
+`MENU_CAM00`, the footer agrees with what session 5 had to read the scripts
+to establish.  `src/game/scene.h`'s `scene_set()` is the one line it takes.
 
 The matrix is a genuine rotation. Scene 671 carries `$4000` — exactly 1.0 in
 s1.14 — alongside `$2D94` (11668) and `$D313` (-11501):

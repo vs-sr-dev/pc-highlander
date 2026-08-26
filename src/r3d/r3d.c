@@ -300,7 +300,19 @@ void r3d_draw_model(R3dTarget *t, const Model *m, const R3dXform *x,
         }
 
         /* Signed area on screen, where y counts downward: a facet whose
-         * vertices wind clockwise in the source comes out positive. */
+         * vertices wind clockwise in the source comes out positive.
+         *
+         * This is 3DENGINE.GAS's *second* cull, the one it keeps for facets
+         * with no normal.  Its first is to transform the stored facet normal
+         * and drop the facet when the result points away - and since every one
+         * of the 6,821 facets on the disc carries a normal of (0,0,0), that
+         * test always passes and nothing is ever culled.  So no culling is the
+         * faithful setting, and the Z-buffer does the work: a back face is
+         * behind the front face at the same pixel by construction.  Culling by
+         * winding is left available and is not the default, because the
+         * shipped models do not agree about which way round they are - the
+         * item models were mirrored on export (docs/03-data-formats.md 3.3
+         * swaps two axes) and read the opposite way to the characters. */
         double area = 0;
         for (int i = 0; i < cn; i++) {
             const Pt *a = &p[i], *b = &p[(i + 1) % cn];

@@ -16,12 +16,17 @@ $(shell mkdir -p $(TMPDIR))
 CC       = gcc
 CFLAGS  ?= -O2 -std=c99 -Wall -Wextra -Wno-unused-parameter
 CFLAGS  += $(shell pkg-config --cflags sdl3)
+# Track header dependencies: without this a change to, say, model.h relinks
+# objects compiled against the old struct, which fails in ways that look like
+# a bug in the renderer.
+CFLAGS  += -MMD -MP
 # -mconsole must come after SDL3, which asks for -mwindows: the viewer
 # prints what it loaded, so it wants a console.
 LDLIBS  += $(shell pkg-config --libs sdl3) -lm -mconsole
 
 SRC := src/main.c src/util/io.c src/util/json.c src/game/scene.c \
-       src/game/model.c src/game/set.c src/r3d/r3d.c src/platform/window.c
+       src/game/model.c src/game/anim.c src/game/actor.c src/game/set.c \
+       src/r3d/r3d.c src/platform/window.c
 OBJ := $(SRC:src/%.c=build/%.o)
 BIN := build/hlview
 
@@ -33,6 +38,8 @@ $(BIN): $(OBJ)
 build/%.o: src/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c -o $@ $<
+
+-include $(OBJ:.o=.d)
 
 run: $(BIN)
 	./$(BIN) --scene CA_CAM06 --model boot:6 --object CA_WINE

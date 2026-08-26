@@ -21,9 +21,21 @@ typedef struct {
     uint16_t id;                /* group * 64 + camera, unique per scene   */
     int16_t  m[9];              /* world -> view rotation, row major, s1.14 */
     int32_t  pos[3];            /* the camera's world position             */
-    int32_t  tail;              /* 672 in every scene                      */
+    int32_t  set_block;         /* CD block of the set this view belongs to */
     int16_t  spare;             /* varies per scene; purpose unknown       */
 } SceneCam;
+
+/* The long at +32 is the set track block offset of the set the view belongs
+ * to, so dividing by the 56-block slot names the set outright.  Checked on
+ * every scene: for all 672, the set it names is one whose scene table lists
+ * that scene's id, and all 48 sets are named by at least one view.  It settles
+ * the two views the group vote of docs/10-set-track.md 10.6 could not.  */
+#define SCENE_SET_SLOT 56
+static inline int scene_set(const SceneCam *c)
+{
+    return c->set_block % SCENE_SET_SLOT ? -1
+                                        : (int)(c->set_block / SCENE_SET_SLOT);
+}
 
 typedef struct {
     uint16_t colour[SCENE_PIXELS];  /* R5 B5 G6, straight off the disc      */

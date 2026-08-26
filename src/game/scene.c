@@ -52,7 +52,7 @@ int scene_load(Scene *s, const char *pict_path, int n, const uint8_t key[8192])
         s->cam.m[i] = be16s(f + 2 + i * 2);
     for (int i = 0; i < 3; i++)
         s->cam.pos[i] = be32s(f + 20 + i * 4);
-    s->cam.tail  = be32s(f + 32);
+    s->cam.set_block = be32s(f + 32);
     s->cam.spare = be16s(f + 44);
     return 1;
 }

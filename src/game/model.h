@@ -22,12 +22,23 @@ typedef struct {
 typedef struct {
     long      offset;                       /* where it was found in the file */
     uint32_t  base;                         /* the address it is linked at    */
+    int       origin;                       /* the origin this piece hangs on */
     int       nverts;                       /* drawn vertices                 */
     int       norigins;                     /* origin points, not drawn       */
     int       nfacets;
-    int16_t (*vert)[3];
+    int16_t (*vert)[3];                     /* nverts + norigins entries      */
+    uint8_t  *origin_id;                    /* norigins: what each one is called */
     Facet    *facet;
 } Model;
+
+/* The origin points are the skeleton.  A model's header byte says which origin
+ * it hangs on - 0 for a root, 128..255 for a piece - and the origin points that
+ * follow its vertices are numbered the same way, in the fourth word the drawn
+ * vertices spend on a homogeneous 1.  3DENGINE.GAS transforms an origin point
+ * exactly like a vertex and writes the result into a table indexed by that
+ * number; the next model along reads its own position straight out of it.
+ * docs/14-characters.md 14.1. */
+#define MODEL_ORIGIN(m, k)  ((m)->vert[(m)->nverts + (k)])
 
 /* Parses the model at offset off.  Returns 0 if there is not one there. */
 int  model_parse(Model *m, const uint8_t *d, size_t size, long off);

@@ -4,6 +4,10 @@ Engine code, phase 3 onwards.
 main.c        hlview: the viewer, and for now the whole front end
 game/         scene.c  a backdrop slot: XOR key, colour, depth, camera footer
               model.c  the SKELSKIN polyhedron format, read off the disc
+              anim.c   the animation records: root motion and three angles a piece
+              actor.c  a character: fifteen pieces chained through their origin
+                       points, posed by a frame, walked over the floor the way
+                       COLLIDE.GAS does it
               set.c    one environment: views, doorways, events, and the floor
                        mesh, with the triangle search FINDTRI.GAS describes
 r3d/          r3d.c    projection, matrices, scanline fill, Z-buffer
@@ -23,6 +27,9 @@ build/hlview --model boot:6 --spin                 the wine bottle, turning
 build/hlview --scene TENT6_CAM01 --model boot:6 --object '#190'
 build/hlview --scene DUN1_CAM00 --mesh             the collision mesh, over the art
 build/hlview --check-mesh                          the triangle search, checked
+build/hlview --char 0 --anim 10 --play             Quentin, walking on the spot
+build/hlview --scene DUN1_CAM00 --char 0 --anim 10 --walk --events
+build/hlview --check-char                          the pose, checked
 build/hlview --help
 ```
 
@@ -31,6 +38,7 @@ It reads the tracks as `tools/jcd/jcdinfo.py --extract` leaves them, in
 pre-converted, the scene decode and the model parse are the engine's own.
 
 What the viewer settled, and what it left open, is
-[docs/13-viewer.md](../docs/13-viewer.md). The formats it reads are
+[docs/13-viewer.md](../docs/13-viewer.md) and, for the characters,
+[docs/14-characters.md](../docs/14-characters.md). The formats it reads are
 [07-scene-format.md](../docs/07-scene-format.md) and
-[03-data-formats.md](../docs/03-data-formats.md) 3.3.
+[03-data-formats.md](../docs/03-data-formats.md) 3.3 and 3.4.

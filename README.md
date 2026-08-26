@@ -8,8 +8,18 @@ A native PC reimplementation of **Highlander: The Last of the MacLeods**
 > the 672 backdrops by name, shows its Z-buffer, spins a model read straight
 > off the disc, and **composites that model into the scene, depth-tested against
 > the backdrop's own Z half.** A wine bottle standing on a tent floor keeps
-> every one of its pixels in the open, 34 of 75 with the tent pole across it,
+> every one of its pixels in the open, 36 of 77 with the tent pole across it,
 > and none at all behind the pole.
+>
+> **And it now walks a character around a set.** Fifteen pieces off track 5,
+> chained through the origin points that turn out to be the skeleton, posed by
+> an animation frame, standing on the collision mesh and cutting the camera when
+> it crosses one of the set's `SCENE` events — which is phase 4's success
+> criterion ([docs/14-characters.md](docs/14-characters.md)). The assembly is
+> checked against something it never reads: every animation frame records the
+> highest and lowest point of the pose it describes, and reproducing both for
+> all **6,591 character frames on the disc** costs a mean error of 2.5 units on
+> a figure 414 units tall.
 >
 > Drawing settled the three conventions no amount of reading could
 > ([docs/13-viewer.md](docs/13-viewer.md)): the camera footer's matrix is **row
@@ -22,10 +32,17 @@ A native PC reimplementation of **Highlander: The Last of the MacLeods**
 > the debugging view the rest of the phase gets built against. The triangle
 > search is `FINDTRI`'s, a search over a list rather than a walk down one path,
 > and the difference matters: greedy fails on 258 of the disc's 5,342 triangles,
-> the list search on none of them. Inverting a backdrop's Z-buffer back into
-> world coordinates ([tools/scene/backproj.py](tools/scene/backproj.py)) also
-> closed phase 3's open question — the collision height *is* the floor's world
-> y, at 1:1, and what looked like objects sinking is relief in the art.
+> the list search on none of them. Movement over that mesh is `COLLIDE.GAS`'s:
+> a swept circle against the edges it can reach, a wall or a step over 255 units
+> stops it dead, and the floor underfoot is the highest any reached triangle
+> offers.
+>
+> Two smaller things the disc gave up on the way. The camera footer's long at
+> +32 is not the constant session 3 took it for: it is the **set's own block on
+> track 3**, which names the set a view belongs to outright, and it checks out
+> on all 672. And **no facet on the disc carries a normal** — all 6,821 are
+> zero — which means the engine's own backface test always passes and the
+> Z-buffer does the work. The viewer no longer culls.
 >
 > Behind that, phase 2: all 672 backdrops and their Z-buffers, the models — the
 > disc's wine bottle is facet-for-facet the `MERLOT79.INC` of the 1995 source —
@@ -96,6 +113,7 @@ Z-buffer**, plus **Cinepak** full-motion video and **Red Book** CD audio.
 | [docs/11-script-vm.md](docs/11-script-vm.md) | The script VM: encoding, opcodes, and what the scripts do |
 | [docs/12-world-and-sheets.md](docs/12-world-and-sheets.md) | The world-state table and the character sheets |
 | [docs/13-viewer.md](docs/13-viewer.md) | The viewer: the view transform, the Z-buffer convention, the rasteriser, the floor |
+| [docs/14-characters.md](docs/14-characters.md) | The character: the skeleton, the pose, movement over the mesh, the camera cuts |
 | [docs/sessions/](docs/sessions/) | Work log, one note per session |
 
 ## The engine
@@ -108,6 +126,9 @@ build/hlview --model boot:6 --spin      # the wine bottle, turning
 build/hlview --scene TENT6_CAM01 --model boot:6 --object '#190'
 build/hlview --scene DUN1_CAM00 --mesh  # the collision mesh over the art
 build/hlview --check-mesh               # the triangle search, checked
+build/hlview --char 0 --anim 10 --play  # Quentin, walking
+build/hlview --scene DUN1_CAM04 --char 0 --anim 10 --walk --events
+build/hlview --check-char               # the pose, against every frame's own extent
 ```
 
 More in [src/README.md](src/README.md).

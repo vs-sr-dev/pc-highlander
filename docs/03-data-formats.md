@@ -173,6 +173,19 @@ Scale is declared in the file header (`Using scaling factor of N mm per unit`).
 `RGB` = 16-bit colour, `Nx/Ny/Nz` = facet normal. Valid vertex indices are
 0-254; **255 means "no reference"** (padding). Maximum 32 vertices per facet.
 
+**No facet on the disc carries a normal.** All 5,548 on track 5 and all 1,273
+in the binary have `Nx = Ny = Nz = 0`, and so do the surviving `.INC` sources,
+which the shipped models match byte for byte. That decides how the engine
+culls: `3DENGINE.GAS` transforms the normal and drops the facet when the result
+points away, and a zero normal always passes, so nothing is culled and the
+Z-buffer does the work. See [13-viewer.md](13-viewer.md) 13.4.
+
+**The origin points carry their own number, in the fourth word.** A drawn
+vertex spends that word on a homogeneous 1; an origin point spends it on the
+number 128..255 that the piece hanging on it declares in its own header. That
+is the whole of a character's skeleton, and it is
+[14-characters.md](14-characters.md) 14.1.
+
 Colours are emitted as named constants with the 3D Studio material name in the
 comment: `COLOURmerlot791 .equ $9a5e ; BEIGE MATTE r=155, g=122, b=74`. That
 RGB-to-16-bit mapping is a useful cross-reference for pinning down the CRY/RGB
@@ -292,9 +305,15 @@ animLow   .w    lowest point
 animAngles ...  groups of 3 bytes (rotations) per model
 ```
 
-So the animation model is **hierarchical rotations**: each frame carries only
-three angles per piece plus root motion. Tweening between frames is computed at
-runtime (`citTween`).
+The three angles per piece are **absolute in the character's own frame, not
+relative to the parent**: `ANIM.GAS` writes them straight into each piece's
+instance data and never accumulates, and `FORMMAT.GAS` reads them back as
+elevation about x, twist about z and azimuth about y - with the character's
+facing added to the last. Only *positions* chain, through the origin points.
+Tweening between frames is computed at runtime (`citTween`).
+[14-characters.md](14-characters.md) 14.2 has the evidence, and 14.3 the check:
+`animHigh` and `animLow` are the pose's own extent, and reproducing them for all
+6,591 character frames on the disc costs a mean error of 2.5 units.
 
 Combat comes out of the animation data itself: positive `animHit` is an attack,
 negative is defence/parry, `animRange` is reach. See `PCOL.TXT` for the full

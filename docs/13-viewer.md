@@ -1,10 +1,12 @@
 # 13 — The viewer, and the three things it had to settle
 
-Status: **phase 3 done, phase 4 begun.** `src/` builds `hlview`, which opens a
-backdrop, shows its Z-buffer, spins a model extracted from the disc, and
+Status: **phase 3 done, phase 4 under way.** `src/` builds `hlview`, which opens
+a backdrop, shows its Z-buffer, spins a model extracted from the disc, and
 composites that model into a scene depth-tested against the backdrop's own Z
-half. It now also loads the set a view belongs to, draws its collision mesh over
-the picture, and stands objects on the floor (13.7, 13.8).
+half. It also loads the set a view belongs to, draws its collision mesh over the
+picture, and stands objects on the floor (13.7, 13.8) — and, from session 8,
+assembles a character out of fifteen pieces and walks it about, which is
+[14-characters.md](14-characters.md).
 
 Everything before this phase could be read. Nothing here could: the roadmap left
 three conventions explicitly unresolved, because none of them can be tested
@@ -121,10 +123,33 @@ The framebuffer is **RGB16 the whole way**, R5 B5 G6 as the Jaguar had it, and
 is converted to RGB888 only when SDL uploads it or a screenshot is written. The
 backdrop therefore loads with a `memcpy`.
 
-Two things are ours rather than the game's, and are marked as such in the code:
-**the lighting** — one directional light and an ambient term, because the set's
-own light list has not been located — and **backface culling by screen-space
-signed area**, because the shipped models are not consistently wound.
+**The lighting is ours** — one directional light and an ambient term, because
+the set's own light list has not been located — and it is marked as such in the
+code.
+
+**The culling was ours too, and session 8 removed it.** `3DENGINE.GAS` culls a
+facet by transforming its stored normal and dropping it when the result points
+away; the screen-space signed area is only its fallback, for facets flagged as
+having no normal. But **every facet on the disc has a normal of (0,0,0)** — all
+5,548 on track 5, all 1,273 in the binary — so the engine's test always passes
+and nothing is ever culled. The Z-buffer does the work instead, which for a
+closed model is the same picture and for an open one is a better one.
+
+Culling by winding is therefore wrong, and the shipped models prove it by
+disagreeing about which way round they are. Taking the whole silhouette drawn
+with no culling as the truth:
+
+```
+                      no culling   cull back   cull front
+the wine bottle           72 px      72 px       69 px
+Quentin, DUN1_CAM00      327 px     254 px      321 px
+```
+
+The item models read one way and the characters the other, which is exactly what
+the export in [03-data-formats.md](03-data-formats.md) 3.3 predicts: the item
+models had two axes swapped, and a swap of two axes is a mirror, so their facet
+lists — untouched — come out reversed. `--cull back` and `--cull front` are
+still there; neither is the default any more.
 
 ## 13.5 What the viewer measures
 
@@ -136,14 +161,26 @@ backdrop's. The difference is what the scenery hid.
 $ hlview --scene TENT6_CAM01 --model boot:6 --pos -100,100,-100 --face 192,0,0
 silhouette 72 px, 72 visible, 0 hidden by the scene
 $ hlview --scene TENT6_CAM01 --model boot:6 --pos 35,100,-100 --face 192,0,0
-silhouette 75 px, 34 visible, 41 hidden by the scene
+silhouette 77 px, 36 visible, 41 hidden by the scene
 $ hlview --scene TENT6_CAM01 --model boot:6 --pos 10,100,-100 --face 192,0,0
-silhouette 74 px, 0 visible, 74 hidden by the scene
+silhouette 76 px, 0 visible, 76 hidden by the scene
 ```
 
 Three positions on one tent floor, 135 units apart at the widest: the bottle
 in the open, the bottle with its left half cut along the edge of the tent pole, and the
 bottle entirely behind the pole. Same code, same scene, one number moved.
+
+(The middle two counts were 75 and 74 before session 8 stopped culling by
+winding, 13.4. The pixels the cull was losing are a back facet or two at the
+silhouette's edge; the 41 the tent pole hides did not move.)
+
+The same criterion applied to a character, which is fifteen models rather than
+one, is [14-characters.md](14-characters.md):
+
+```
+$ hlview --scene CA_CAM03 --char 0 --anim 0
+silhouette 443 px, 411 visible, 32 hidden by the scene
+```
 
 ## 13.6 Why objects sit below the ground the backdrop draws
 
@@ -181,13 +218,17 @@ height 801 -> floor   775        height  2473 -> floor  2468
 
 Over 2,500 units, no scale factor, no offset that matters.
 
-**What is left is the art.** The residual is relief the flat mesh approximates:
-about 12 units in DUN1, about 70 under the wine bottle in TENT6, where the tent
-floor is a raised mound. It is not a format question and there is nothing to
-decode; the collision mesh is simply a plane through the bottom of a modelled
-surface. The engine should do what the original did — take the triangle's height
-as `GROUNDHEIGHT` — and a bottle 69 units tall will sit a little low in the
-sets whose ground is bumpiest.
+**What is left is a per-set gap between the collision plane and the drawn
+floor**, and session 8 measured it across the disc rather than in two sets. It
+runs from −50 in `SHANR3` to +348 in `PRI`, with `CA` at 155 and `DUN1` at 12,
+and it is not a constant, does not track the camera's height, and does not track
+either unexplained field of the camera footer. The table is
+[14-characters.md](14-characters.md) 14.7.
+
+A bottle 69 units tall sitting a little low was a curiosity. A character 414
+units tall standing in the same place is buried to the hips in `CA` and to the
+neck in `PRI`, so what the original did about it is now a question the port has
+to answer. It is open.
 
 The second candidate, a vertical offset in the model, is ruled out for items:
 the nineteen models in the binary carry **no origin points at all**. The
@@ -259,7 +300,9 @@ build/hlview --model boot:6 --spin                  # the wine bottle, turning
 build/hlview --scene TENT6_CAM01 --object #190 --model boot:6   # that tent's own bottle
 build/hlview --scene DUN1_CAM00 --mesh                 # the floor, over the art
 build/hlview --check-mesh                             # the triangle search, checked
-build/hlview --list-scenes | --list-models | --list-objects
+build/hlview --scene DUN1_CAM00 --char 0 --anim 10 --walk   # a character on it
+build/hlview --check-char                             # the pose, checked
+build/hlview --list-scenes | --list-models | --list-objects | --list-chars
 ```
 
 `--shot FILE.ppm` writes a frame, `--no-window` renders without opening one, so
