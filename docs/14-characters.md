@@ -448,7 +448,124 @@ cut to CNY08_CAM12 (id 780) at (-4304,3903) on triangle 38
 that leave their set find an arrival - 88 keyed, 41 by the default, none off the
 far mesh.
 
-## 14.10 Using it
+## 14.10 The companion
+
+A second character, walking about under his own joypad, needs three things that
+are all already on the disc: something that says who he is, something that says
+where he stands, and something that says what he does. All three turn out to be
+one field each.
+
+### `cshBehaviour` is an AI command, and it is a byte
+
+§12.8 left `cshBehaviour` as "eleven distinct values - 0, 10, 20, 30, 40, 250,
+1536, 1792, 2304, 2816, 3840 - presumably an AI selector". Read as **two bytes
+rather than one word** the whole list falls apart into two clean halves:
+
+| sheets | high byte | low byte |
+|---|---|---|
+| 1 (Quentin) | 0 `aiNop` | 0 |
+| 2, 3, 6 | 6 `aiAttackPlayer` | 0 |
+| 4 | 11 `aiShootPlayer` | 0 |
+| 5 | 15 - past the fourteen `LOGICS.INC` numbers | 0 |
+| 7-10 | 9 `aiFollowPlayer` | 0 |
+| 11-14, 17 | 7 `aiFacePlayer` | 0 |
+| 22-39 (the weapons and items) | 0 `aiNop` | 10, 20, 30, 40 or 250 |
+
+The high byte is `ControlCodeTable`'s index and nothing else: the player is
+`aiNop` because the pad drives him, the hunters attack, the one with a gun
+shoots, the shopkeepers face you. The low byte is non-zero **only** on the
+sheets that carry no behaviour at all, so it is an item property sharing the
+word; what it counts is not known.
+
+That the player reads 0 and the gun-carrying hunter reads 11 is the check:
+neither is a number one would land on by accident.
+
+### Who follows: sheet 7, which is Ramirez
+
+`WORLD.INC` says `WORLD_RAMIREZ equ 1`, and world record 1 in the retail table
+is July's line for him exactly - sanity 242, personality 6, strength 229, life
+229, `WSTDeactivated` - with `wstSheet` zero, because a script gives him one.
+Which sheet is settled by shape and order together. The chain is in `SHEET.S`'s
+order, and four sheets in a row carry 15 models, 4 animations and
+`aiFollowPlayer`, exactly where `SHEET.S` has `RAMIREZ`, `FAVEB`, `MANGUA` and
+`ARAKA`. The first of the four is sheet 7.
+
+Its one file record names track 5 block 1176, and **that is where bundle 9
+begins** - `1176 * 2352 + 4`, the four bytes being the slot's length prefix.
+Fifteen pieces, 221 vertices, four animations, and those four read off their own
+root motion the way Quentin's thirty were:
+
+```
+ 0    5 frames, nothing moves                  stand
+ 1   25 frames, +381 along z, 15.2 a frame     walk
+ 2   15 frames, +51 of facing, 3.4 a frame     turn left
+ 3   15 frames, -56 of facing, 3.7 a frame     turn right
+```
+
+Which is `BO_LOGICS_2A` - "stand & walk", the logic file his sheet asks for -
+item for item. Nothing was chosen here: `hlview --list-sheets` resolves every
+sheet in the chain to its bundle this way, and sheets 1 to 16 land on bundles 0
+to 15 with none left over and none shared.
+
+### What he does: `AIFollowCode`, which is four lines
+
+`AICTRL.GAS` runs **two** master loops over the active characters, and the
+difference between them is the whole design. `ControlCode` fills in `actJoypad`
+for each - from the hardware through `PlayerControl` for the one the pad is
+driving, from `ComputerControl` for everybody else. `ActionCode` then turns that
+joypad into an animation, and it cannot tell which loop wrote it. So an AI
+character is not a special case anywhere below: **he presses buttons.**
+
+`ComputerControl` is one jump through `ControlCodeTable`, indexed by
+`actAICommand`, and the fourteen entries are built from three pieces each:
+something that says where the target is, `AIRotateCode`, and one of `AIFaceCode`
+/ `AIGotoCode` / `AIFollowCode` / `AIAttackCode`. `AIFollowCode` is the whole of
+following:
+
+```
+turn towards the player            AIRotateCode
+if dx*dx + dz*dz > 625*625         follow_range = 1000/4*5/2, which is 2.50 m
+    press forward
+```
+
+There is no path finding in it, and none anywhere else in the original either:
+he walks *at* you, and a wall stops him the same way it stops you.
+
+`AIRotateCode` is where a port goes wrong, because it is three sign tests around
+a 257-byte `arctan_table`. The table needs no transcribing - every one of its
+257 entries is exactly `round(atan(i / 256) * 512 / pi)`, so `ai.c` builds it -
+and the deadband is what keeps a follower from juddering: under two steps out
+and he does not turn at all.
+
+### And where he stands: the other half of every doorway
+
+§14.9 read the init table's flags word as `facing * 256 + character`, bit 0
+being 0 for the player and 1 for the companion, with 44 ids carrying both. That
+bit is now doing its job: on a doorway the player is put down from his entry and
+the companion from the one beside it, keyed on the same view being left.
+
+```
+cut to C3_CAM19 (id 211) at (2220,26556) on triangle 0
+  through the door into set 14: arriving at (-3192,6358) facing 128, from view 1037
+  the companion arrives at (-2265,6194) facing 128
+```
+
+`hlview --check-follow` runs it over the disc. Twenty sets carry an entry pair;
+in each one the two are put down where the table says and the player walks
+forward for 300 frames and then stands.
+
+* **The bearing** is right everywhere: over 3,600 directions the worst
+  disagreement with the arctangent is one step of 256, which is the table's own
+  quarter-step resolution rounded.
+* **He never leaves the mesh** - 0 frames off it in all twenty sets, which is
+  the invariant that matters, since the ground height is indexed by the triangle
+  he is standing on.
+* **Sixteen of the twenty close back up** to inside 625 units. The other four
+  are stopped by geometry, which is not a failure to fix here: `AIFollowCode`
+  walks straight at you and always did.
+
+## 14.11 Using it
+
 
 ```
 hlview --list-chars                                  the fourteen bundles
@@ -459,6 +576,10 @@ hlview --check-char                                  the pose, checked
 hlview --scene DUN1_CAM04 --char 0 --drive           the pad drives him (14.8)
 hlview --scene CNY09_CAM00 --char 0 --drive --pad 'up:250' --pos '-2574,0,3398' --face '0,192,0'
 hlview --check-doors                                 the doorways, checked
+hlview --list-sheets                                 the sheets, and what each wears
+hlview --scene DUN1_CAM00 --char 0 --drive           and the companion follows (14.10)
+hlview --scene DUN1_CAM00 --char 0 --drive --alone   without him
+hlview --check-follow                                the bearing and the follow, checked
 ```
 
 `--frame N` holds one frame, `--pos X,Y,Z` and `--face E,A,T` place it, and

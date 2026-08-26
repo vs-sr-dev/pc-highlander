@@ -127,7 +127,7 @@ opened by answering it — the mesh is a flat plane through the bottom of ground
 the art models with relief, and the height word is the floor's world y at 1:1
 (13.6).
 
-### Phase 4 — The world exists — **started**
+### Phase 4 — The world exists — **done**
 Port the data structures (WST, ACT, CIT, DDA, character sheets), set loading,
 the collision mesh and triangle search (`FINDTRI`), and character movement with
 ground height and stair handling (`SMOOTH.TXT`). Fixed cameras that switch when
@@ -152,10 +152,31 @@ Done so far:
   (13.6). The question phase 3 left open — objects sinking into the ground — is
   answered: it is relief in the art that the flat mesh approximates, not a
   format we were reading wrong.
+* **The player, driven, and the doorways.** `src/game/control.c` is
+  `AICTRL.GAS`'s `PlayerControl` and `ActionCode` — the pad picks the animation
+  and the animation's own root motion does the walking — and a `SCENE` event
+  that names another set's view loads that set and stands the character on its
+  floor, from the init table keyed on the view being left
+  ([14-characters.md](14-characters.md) 14.8, 14.9).
+* **A second character.** `src/game/sheet.c` reads the world table and the
+  character sheets out of the resident binary, and `cshBehaviour` — one byte of
+  one sheet — says what a character does when nobody drives him.
+  `src/game/ai.c` is the other half of `AICTRL.GAS`: the fourteen AI commands,
+  and the arctan bearing behind all of them. Ramirez follows the player and
+  arrives through the other half of every doorway
+  ([14-characters.md](14-characters.md) 14.10).
+
+**The success criterion is met**: `hlview --scene DUN1_CAM00 --char 0 --drive`
+walks Quentin around `DUN1`, the camera cuts where the event lines say, the
+doors lead into the next set — and Ramirez comes too.
 
 ### Phase 5 — The game moves
 Animation with tweening, character-to-character collision, combat (`PCOL.TXT`),
 AI (`AICTRL.GAS`), item pickup and inventory.
+
+Started: the AI's movement half is in — `face`, `goto` and `follow` — so what
+phase 5 owes it is `AIAttackCode`'s and `AIShootCode`'s other half, which needs
+`actStatus`, the hit frames and the opponent's own joypad.
 **Success criterion:** you can fight a Hunter and one of you dies.
 
 ### Phase 6 — The game tells a story

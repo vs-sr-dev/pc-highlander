@@ -217,7 +217,20 @@ is what the question has been narrowed to.
   be wrong: the file table that does the linking is in the binary, and eighteen
   of the sheets have their model pointer filled in already.
 
-* `cshBehaviour` takes eleven distinct values — 0, 10, 20, 30, 40, 250, 1536, 1792,
-  2304, 2816, 3840 — and is presumably an AI selector; `AICTRL.GAS` is the place
-  to look.
+* ~~`cshBehaviour` takes eleven distinct values — 0, 10, 20, 30, 40, 250, 1536,
+  1792, 2304, 2816, 3840 — and is presumably an AI selector.~~ **Settled: it is
+  two bytes, not one word.** The high byte is one of `AICTRL.GAS`'s fourteen AI
+  commands — `aiNop` for the player, `aiAttackPlayer` for the hunters,
+  `aiShootPlayer` for the one with a gun, `aiFacePlayer` for the shopkeepers,
+  `aiFollowPlayer` for four sheets in a row where `SHEET.S` has RAMIREZ, FAVEB,
+  MANGUA and ARAKA. The low byte is non-zero only on the eighteen item and three
+  weapon sheets, which carry no behaviour at all: 10, 20, 30, 40 or 250, an item
+  property sharing the word, and what it counts is still open.
+  ([14-characters.md](14-characters.md) 14.10.)
+* One sheet reads 15, which is past the fourteen commands `LOGICS.INC` numbers —
+  a command the retail build added. Five world records use it.
+* **Sheet 7 is Ramirez**, and every sheet in the chain now resolves to its model
+  bundle: the file record's block times 2352, plus the slot's four-byte length
+  prefix, is where the bundle begins, and sheets 1 to 16 land on bundles 0 to 15
+  with none shared and none left over. `hlview --list-sheets` prints it.
 * 125 of the 197 world records have no name.

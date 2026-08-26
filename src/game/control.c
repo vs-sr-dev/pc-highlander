@@ -138,6 +138,52 @@ static const LogicTuple quentin[] = {
 
 const LogicTable control_quentin = { quentin, (int)(sizeof quentin / sizeof *quentin) };
 
+/* ---- the companion's table ------------------------------------------ */
+
+/* Ramirez's sheet loads `BO_LOGICS_2A`, which DATA.INC annotates "stand &
+ * walk", and his bundle carries exactly four animations - which, read off
+ * their own root motion the way Quentin's thirty were, are
+ *
+ *    0    5 frames, nothing moves                  stand
+ *    1   25 frames, +381 along z, 15.2 a frame     walk
+ *    2   15 frames, +51 of facing, 3.4 a frame     turn left
+ *    3   15 frames, -56 of facing, 3.7 a frame     turn right
+ *
+ * so the table below is the same shape as Quentin's with the rows that need a
+ * run or a walk backward taken out, because he has neither.  Everything else -
+ * the stances, FSATurn on the turn, the fall through to standing - is the same
+ * mechanism.  Like Quentin's, the table itself is ours: the real `2A` is one
+ * of the five CD files nothing on the retail disc loads (docs/14-characters.md
+ * 14.9).
+ */
+#define B_STAND      0
+#define B_WALK       1
+#define B_TURN_L     2
+#define B_TURN_R     3
+
+static const LogicTuple follower[] = {
+  { PAD(JOY_UP), {                             /* forward                    */
+      [ST_STAND] = { B_WALK, ST_WALK }, [ST_TURN] = { B_WALK, ST_WALK },
+      [ST_BACK]  = { B_WALK, ST_WALK }, [ST_WALK] = { B_WALK, ST_WALK },
+      [ST_JOG]   = { B_WALK, ST_WALK }, }},
+  { PAD(JOY_LEFT), {                           /* turn left                  */
+      [ST_STAND] = { B_TURN_L, ST_TURN | FSA_TURN },
+      [ST_TURN]  = { B_TURN_L, ST_TURN | FSA_TURN },
+      [ST_BACK]  = { B_WALK,   ST_WALK }, [ST_WALK] = { B_WALK, ST_WALK },
+      [ST_JOG]   = { B_WALK,   ST_WALK }, }},
+  { PAD(JOY_RIGHT), {                          /* turn right                 */
+      [ST_STAND] = { B_TURN_R, ST_TURN | FSA_TURN },
+      [ST_TURN]  = { B_TURN_R, ST_TURN | FSA_TURN },
+      [ST_BACK]  = { B_WALK,   ST_WALK }, [ST_WALK] = { B_WALK, ST_WALK },
+      [ST_JOG]   = { B_WALK,   ST_WALK }, }},
+  { 0, {                                       /* nothing held: stand        */
+      [ST_STAND] = { B_STAND, ST_STAND }, [ST_TURN] = { B_STAND, ST_STAND },
+      [ST_BACK]  = { B_STAND, ST_STAND }, [ST_WALK] = { B_STAND, ST_STAND },
+      [ST_JOG]   = { B_STAND, ST_STAND }, }},
+};
+
+const LogicTable control_follower = { follower, (int)(sizeof follower / sizeof *follower) };
+
 const char *control_stance_name(uint8_t stance)
 {
     switch (STANCE(stance)) {

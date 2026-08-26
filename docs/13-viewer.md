@@ -307,10 +307,15 @@ build/hlview --scene DUN1_CAM00 --mesh                 # the floor, over the art
 build/hlview --check-mesh                             # the triangle search, checked
 build/hlview --scene DUN1_CAM00 --char 0 --anim 10 --walk   # a character on it
 build/hlview --check-char                             # the pose, checked
+build/hlview --scene DUN1_CAM00 --char 0 --drive       # the pad drives him
+build/hlview --scene DUN1_CAM00 --char 0 --drive --alone   # ...without Ramirez
+build/hlview --check-doors | --check-follow           # the doorways; the follow
 build/hlview --list-scenes | --list-models | --list-objects | --list-chars
+build/hlview --list-sheets                            # the 40 character sheets
 ```
 
-`--shot FILE.ppm` writes a frame, `--no-window` renders without opening one, so
+`--shot FILE.ppm` writes a frame and `--shot-at N` writes it at frame `N`
+rather than the first, `--no-window` renders without opening one, so
 every picture in this document is reproducible from a command line. Scenes are
 named from `assets/manifest.json` — `CA_CAM03`, not an index — and world records
 by their July names, `CA_WINE` or `#5`.

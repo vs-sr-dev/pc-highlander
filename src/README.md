@@ -10,8 +10,15 @@ game/         scene.c  a backdrop slot: XOR key, colour, depth, camera footer
                        COLLIDE.GAS does it
               set.c    one environment: views, doorways, events, and the floor
                        mesh, with the triangle search FINDTRI.GAS describes
-              control.c AICTRL.GAS: the joypad, and the animation it chooses -
-                       the double tap, the stance, and the turn
+              control.c AICTRL.GAS's ControlCode/ActionCode: the joypad, and
+                       the animation it chooses - the double tap, the stance
+                       and the turn
+              ai.c     AICTRL.GAS's other half: the joypad a character who is
+                       not the player presses.  The arctan bearing, and the
+                       face / goto / follow codes behind the fourteen commands
+              sheet.c  the world table and the character sheets, out of the
+                       resident binary: who a character is, which bundle he
+                       wears, and what he does when nobody drives him
 r3d/          r3d.c    projection, matrices, scanline fill, Z-buffer
 platform/     window.c the only file that knows SDL exists
 util/         io.c     whole-file reads and big-endian accessors
@@ -35,6 +42,9 @@ build/hlview --scene DUN1_CAM04 --char 0 --drive   the arrows drive him
 build/hlview --scene DUN1_CAM04 --char 0 --drive --pad 'up:40,-:2,up:60'
 build/hlview --check-char                          the pose, checked
 build/hlview --check-doors                         the doorways, checked
+build/hlview --list-sheets                         the sheets, and what each wears
+build/hlview --scene DUN1_CAM00 --char 0 --drive   ...and Ramirez follows you
+build/hlview --check-follow                        the bearing, and the follow
 build/hlview --help
 ```
 

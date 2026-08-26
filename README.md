@@ -27,7 +27,7 @@ A native PC reimplementation of **Highlander: The Last of the MacLeods**
 > larger, and the item models are stored on their side with the **world records
 > standing them up** at elevation 192 on the game's 256-step circle.
 >
-> **Phase 4 has started.** The engine loads a set off track 3 — views, doorways,
+> **Phase 4 is done.** The engine loads a set off track 3 — views, doorways,
 > events and the floor mesh — and draws that mesh over the backdrop, which is
 > the debugging view the rest of the phase gets built against. The triangle
 > search is `FINDTRI`'s, a search over a list rather than a walk down one path,
@@ -77,6 +77,22 @@ A native PC reimplementation of **Highlander: The Last of the MacLeods**
 > already pointed at from the sheets, one each. And the "24 unexplained bytes"
 > after every set header are the same kind of record: **the set's sound bundles**,
 > on track 6's 38 slots of 56 blocks, tagged `WAVE` in all 97 of them.
+>
+> **And there are two of you.** `cshBehaviour` was 12.8's last open field, and
+> it is not a word but two bytes: the high one is an `AICTRL.GAS` AI command —
+> `aiNop` for the player, `aiAttackPlayer` for the hunters, `aiShootPlayer` for
+> the one with the gun, `aiFollowPlayer` for four sheets in a row where the 1995
+> `SHEET.S` has RAMIREZ, FAVEB, MANGUA and ARAKA. The first of those four names
+> track 5 block 1176, which is where bundle 9 begins, and the same rule resolves
+> the whole chain: sheets 1 to 16 land on bundles 0 to 15, none shared, none
+> left over. His four animations are `BO_LOGICS_2A`, "stand & walk", item for
+> item. So **Ramirez follows you**, and he does it by pressing buttons: the
+> engine has two master loops, one that fills in a joypad — from the hardware
+> for the player, from `ComputerControl` for everyone else — and one that turns
+> a joypad into an animation, and the second cannot tell which wrote it.
+> `hlview --check-follow` runs it over the disc: the bearing is within one step
+> of 256 over 3,600 directions, and in all twenty sets that carry an arrival for
+> him he is never once off the collision mesh.
 >
 > Two smaller things the disc gave up on the way. The camera footer's long at
 > +32 is not the constant session 3 took it for: it is the **set's own block on
@@ -172,6 +188,9 @@ build/hlview --scene DUN1_CAM04 --char 0 --anim 10 --walk --events
 build/hlview --scene DUN1_CAM04 --char 0 --drive        # the arrows drive him
 build/hlview --check-char               # the pose, against every frame's own extent
 build/hlview --check-doors              # the doorways, over the whole disc
+build/hlview --scene DUN1_CAM00 --char 0 --drive   # ...and Ramirez follows you
+build/hlview --list-sheets              # the 40 sheets, and what each one wears
+build/hlview --check-follow             # the bearing, and the follow over the disc
 ```
 
 More in [src/README.md](src/README.md).

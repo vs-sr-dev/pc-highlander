@@ -23,6 +23,8 @@
 #include "game/control.h"
 #include "game/actor.h"
 #include "game/set.h"
+#include "game/sheet.h"
+#include "game/ai.h"
 #include "r3d/r3d.h"
 #include "platform/window.h"
 
@@ -33,6 +35,7 @@ typedef struct {
     const char *model;
     const char *object;
     const char *shot;
+    int   shot_at;
     const char *pad;
     int   no_window, depth, spin, wire, shade, scale, frames;
     int   mesh, no_ground;
@@ -40,7 +43,8 @@ typedef struct {
     int   have_pos, pos[3];
     int   have_face, face[3];
     R3dCull cull;
-    int   list_scenes, list_models, list_objects, list_chars;
+    int   list_scenes, list_models, list_objects, list_chars, list_sheets;
+    int   alone;
 } Args;
 
 static char path_pict[512], path_boot[512], path_t5[512], path_set[512];
@@ -219,10 +223,11 @@ static int models_open(ModelSet *ms, const char *spec, int *index)
 /* ---- the cast ------------------------------------------------------ */
 
 /* Track 5 in the shape the engine wants it: the model bundles, and for each
- * one the animations stored between it and the next.  Nothing on the disc
- * links a character sheet to a bundle (docs/12-world-and-sheets.md 12.7), but
- * the track's own layout does - a bundle and then its animations, one slot
- * each - and the pose check below confirms the pairing independently. */
+ * one the animations stored between it and the next.  What links a sheet to
+ * one of these bundles is the sheet's own file record - block offset into
+ * track 5, which is where the bundle begins (sheet.h, and
+ * docs/12-world-and-sheets.md 12.7).  The track's layout - a bundle and then
+ * its animations, one slot each - is what makes the animations follow. */
 #define CAST_MAX 32
 
 typedef struct {
@@ -277,6 +282,130 @@ static void cast_free(Cast *c)
     io_free(&c->file);
 }
 
+/* ---- the companion ------------------------------------------------- */
+
+/* A second character, walking about under his own joypad.
+ *
+ * Nothing below this struct treats him as a special case.  AICTRL.GAS runs two
+ * master loops over every active character: the first fills in `actJoypad` -
+ * from the hardware for the player, from `ComputerControl` for everyone else -
+ * and the second turns that joypad into an animation.  So the only difference
+ * between Quentin and Ramirez, in the whole of this file, is which of the two
+ * writes the pad. */
+typedef struct {
+    int           sheet;        /* which character sheet he wears           */
+    int           cast;         /* the bundle that sheet names              */
+    const Bundle *bundle;
+    const Anim   *anim;
+    Actor         actor;
+    Control       ctl;
+    Ai            ai;
+    int           placed;       /* 1 from his own entry, 2 beside the
+                                   player, 0 not on this set's floor        */
+} Companion;
+
+/* Who follows you, worked out rather than chosen.  The sheet chain is in the
+ * same order as the 1995 `SHEET.S`; four sheets in a row carry
+ * `cshBehaviour = aiFollowPlayer` where SHEET.S has RAMIREZ, FAVEB, MANGUA and
+ * ARAKA; and the first of the four names track 5 block 1176 through its one
+ * file record, which is where bundle 9 begins - fifteen pieces and the four
+ * animations `BO_LOGICS_2A` asks for. */
+static int companion_open(Companion *co, Sheets *sh, Cast *cast)
+{
+    memset(co, 0, sizeof *co);
+    long off[CAST_MAX];
+    for (int i = 0; i < cast->ncast && i < CAST_MAX; i++)
+        off[i] = cast->bundle[i].piece[0]->offset;
+    sheets_bundles(sh, off, cast->ncast);
+
+    co->sheet = sheets_by_behaviour(sh, AI_FOLLOW_PLAYER);
+    if (co->sheet < 0)
+        return 0;
+    co->cast = sh->sheet[co->sheet].bundle;
+    if (co->cast < 0 || co->cast >= cast->ncast)
+        return 0;
+    co->bundle = &cast->bundle[co->cast];
+    control_init(&co->ctl);
+    ai_init(&co->ai, sh->sheet[co->sheet].behaviour);
+    return 1;
+}
+
+/* Where he stands when a set opens.  The init table carries him and always
+ * has: a doorway is two entries sharing an id, one with bit 0 of the flags
+ * clear and one with it set, and 44 of the disc's ids have both halves
+ * (docs/10-set-track.md 10.3).  `from_id` is the view being left, which is
+ * what those entries are keyed on. */
+static int companion_place(Companion *co, const Set *s, uint16_t from_id,
+                           const Actor *player)
+{
+    const SetEntry *door = NULL, *any = NULL;
+    for (int k = 0; k < s->nentries; k++) {
+        const SetEntry *e = &s->entry[k];
+        if (!ENTRY_COMPANION(e))
+            continue;
+        if (e->id == from_id)            door = e;
+        else if (e->id == 0xFFFF && !any) any  = e;
+    }
+    if (!door) door = any;
+    co->placed = 0;
+    if (door && actor_place(&co->actor, s, door->x, door->z, ENTRY_FACING(door)))
+        co->placed = 1;
+    else if (player) {
+        /* No entry of his own - a third of the disc's views do not list one.
+         * Stand him one follow_range behind the player, facing the same way,
+         * which is where following would have left him; if that is off the
+         * mesh, on the player himself.  This fallback is ours: the original
+         * never needs it, because a script put him somewhere before the set
+         * was ever entered. */
+        double k = 2.0 * 3.14159265358979323846 / 256.0;
+        int32_t bx = player->x - (int32_t)lrint(AI_FOLLOW_RANGE * sin(player->facing * k));
+        int32_t bz = player->z - (int32_t)lrint(AI_FOLLOW_RANGE * cos(player->facing * k));
+        if (actor_place(&co->actor, s, bx, bz, player->facing) ||
+            actor_place(&co->actor, s, player->x, player->z, player->facing))
+            co->placed = 2;
+    }
+    if (co->placed) {
+        co->anim = NULL;
+        control_init(&co->ctl);
+        ai_init(&co->ai, co->ai.behaviour);
+    }
+    return co->placed;
+}
+
+/* One frame of him: `ComputerControl`, and then the same `ActionCode` the
+ * player goes through.  `PlayerControl` is deliberately not run - the
+ * three-frame carry and the double-tap window belong to the hardware pad, and
+ * an AI that wants to run sets JOY_DOUBLE itself, which is exactly what
+ * AIAttackCode does. */
+static void companion_step(Companion *co, const Set *s, const Actor *player,
+                           const Cast *cast)
+{
+    if (!co->bundle || !co->placed)
+        return;
+
+    co->ctl.pad = ai_control(&co->ai, &co->actor, player, NULL);
+
+    int fps     = co->anim && co->anim->fps ? co->anim->fps : 20;
+    int frate   = co->anim && co->anim->fps ? 256 / co->anim->fps : 12;
+    int playing = co->anim && co->actor.frame + 1 < co->anim->frames;
+    control_action(&co->ctl, &control_follower, playing);
+    if (co->ctl.restarted) {
+        int k = co->ctl.anim;
+        if (k >= 0 && k < cast->nanim[co->cast]) {
+            const Anim *pick = &cast->anim[cast->first_anim[co->cast] + k];
+            if (pick != co->anim) {
+                co->anim = pick;
+                fps   = pick->fps ? pick->fps : 20;
+                frate = pick->fps ? 256 / pick->fps : 12;
+            }
+            co->actor.frame = co->anim->frames - 1;
+        }
+    }
+    co->actor.facing = (uint8_t)(co->actor.facing + control_turn(&co->ctl, fps));
+    if (co->anim)
+        actor_step(&co->actor, s, co->anim, frate);
+}
+
 /* ---- the doorways, checked ----------------------------------------- */
 
 /* A doorway is two halves that have to agree.  One half is a SCENE event that
@@ -295,14 +424,16 @@ static int check_doors(void)
     for (int i = 0; i < SET_COUNT; i++)
         have[i] = set_load(&cache[i], path_set, i);
 
-    int entries = 0, on_mesh = 0, paired = 0, faces = 0;
+    int entries = 0, on_mesh = 0, faces = 0;
     for (int i = 0; i < SET_COUNT; i++) {
         if (!have[i]) continue;
         for (int k = 0; k < cache[i].nentries; k++) {
             const SetEntry *e = &cache[i].entry[k];
             entries++;
-            if (ENTRY_FACING(e) >= 0 && ENTRY_FACING(e) < 256 &&
-                (e->flags & 0xFE) == 0)
+            /* Every one of the 153 is exactly facing * 256 + (0 or 1): the
+             * facing fills the top byte, so the only bits left over are bit 0,
+             * which says whose arrival this is. */
+            if ((e->flags & 0xFE) == 0)
                 faces++;
             if (cache[i].ntris && set_locate(&cache[i], e->x, e->z) >= 0)
                 on_mesh++;
@@ -578,6 +709,148 @@ static int check_char(void)
     return n > 0 && bad == 0;
 }
 
+/* ---- the companion, checked ---------------------------------------- */
+
+/* Two things have to be right before a follower is worth looking at, and both
+ * can be checked without a window.
+ *
+ * The first is the bearing.  `AIRotateCode` finds the direction to the target
+ * through a 257-entry arctan table and three sign tests, and the sign tests
+ * are where a port goes wrong: get one quadrant swapped and the character
+ * walks away from you in a quarter of the world and towards you in the rest.
+ * So sweep the whole circle and compare with the arctangent the table is an
+ * approximation of.  The table's own resolution is a quarter of a step, so
+ * anything past one step is a fault rather than rounding.
+ *
+ * The second is that he stays on the floor.  `AIFollowCode` walks straight at
+ * the player - there is no path finding anywhere in the original - so he can
+ * and will be stopped by a wall.  What must never happen is that he leaves the
+ * collision mesh, because everything downstream, the ground height included,
+ * is indexed by the triangle he is on.  So run every set that carries a
+ * companion entry: put the two of them down where the doorway says, walk the
+ * player forward until he is stopped, let him stand, and watch. */
+static int check_follow(void)
+{
+    /* 1: the bearing. */
+    int worst = 0;
+    long over = 0, n = 0;
+    for (int i = 0; i < 3600; i++) {
+        double t = i * (2.0 * 3.14159265358979323846 / 3600.0);
+        int32_t dx = (int32_t)lrint(4000.0 * sin(t));
+        int32_t dz = (int32_t)lrint(4000.0 * cos(t));
+        int want = (int)lrint(i * (256.0 / 3600.0)) & 255;
+        int got  = ai_angle(dx, dz);
+        int e = (got - want) & 255;
+        if (e > 128) e -= 256;
+        if (e < 0) e = -e;
+        if (e > worst) worst = e;
+        if (e > 1) over++;
+        n++;
+    }
+    printf("bearing: %ld directions, worst %d step%s off, %ld past one\n",
+           n, worst, worst == 1 ? "" : "s", over);
+
+    /* 2: the follow, over the disc. */
+    Cast cast;
+    if (!cast_open(&cast)) {
+        fprintf(stderr, "no character bundles on track 5\n");
+        return 0;
+    }
+    Sheets sh;
+    Companion co;
+    if (!sheets_load(&sh, path_boot) || !companion_open(&co, &sh, &cast)) {
+        fprintf(stderr, "no aiFollowPlayer sheet with a bundle\n");
+        cast_free(&cast);
+        return 0;
+    }
+    printf("companion: sheet %d, behaviour %s, track 5 block %d, "
+           "bundle %d with %d animations\n", co.sheet,
+           ai_command_name(sh.sheet[co.sheet].behaviour),
+           sh.sheet[co.sheet].block, co.cast, cast.nanim[co.cast]);
+
+    const Anim *walk = &cast.anim[cast.first_anim[0] + 10];   /* the player's */
+    int sets = 0, offmesh = 0, arrived = 0, tried = 0;
+    long far_total = 0;
+    for (int i = 0; i < SET_COUNT; i++) {
+        Set set;
+        if (!set_load(&set, path_set, i))
+            continue;
+        sets++;
+
+        /* A doorway both of them arrive through. */
+        const SetEntry *me = NULL, *him = NULL;
+        for (int k = 0; k < set.nentries && !him; k++) {
+            if (ENTRY_COMPANION(&set.entry[k]))
+                continue;
+            for (int j = 0; j < set.nentries; j++)
+                if (ENTRY_COMPANION(&set.entry[j]) &&
+                    set.entry[j].id == set.entry[k].id) {
+                    me = &set.entry[k];
+                    him = &set.entry[j];
+                    break;
+                }
+        }
+        if (!him) { set_free(&set); continue; }
+        tried++;
+
+        Actor player;
+        Control ctl;
+        control_init(&ctl);
+        if (!actor_place(&player, &set, me->x, me->z, ENTRY_FACING(me)) ||
+            !companion_place(&co, &set, him->id, &player)) {
+            printf("  set %2d: the entry pair for view %d is off the mesh\n",
+                   i, me->id);
+            set_free(&set);
+            continue;
+        }
+        const Anim *an = walk;
+        int off = 0, farthest = 0;
+        for (int f = 0; f < 500; f++) {
+            /* 300 frames of forward, then let go and stand. */
+            control_pad(&ctl, f < 300 ? PAD(JOY_UP) : 0);
+            int playing = player.frame + 1 < an->frames;
+            control_action(&ctl, &control_quentin, playing);
+            if (ctl.restarted && ctl.anim >= 0 && ctl.anim < cast.nanim[0]) {
+                const Anim *pick = &cast.anim[cast.first_anim[0] + ctl.anim];
+                if (pick != an) an = pick;
+                player.frame = an->frames - 1;
+            }
+            player.facing = (uint8_t)(player.facing +
+                                      control_turn(&ctl, an->fps ? an->fps : 20));
+            actor_step(&player, &set, an, an->fps ? 256 / an->fps : 12);
+
+            companion_step(&co, &set, &player, &cast);
+            if (co.actor.tri < 0)
+                off++;
+            int64_t dx = co.actor.x - player.x, dz = co.actor.z - player.z;
+            int d = (int)lrint(sqrt((double)(dx * dx + dz * dz)));
+            if (d > farthest) farthest = d;
+        }
+        int64_t dx = co.actor.x - player.x, dz = co.actor.z - player.z;
+        int end = (int)lrint(sqrt((double)(dx * dx + dz * dz)));
+        int ok = end <= AI_FOLLOW_RANGE;
+        arrived += ok;
+        far_total += farthest;
+        if (off) offmesh++;
+        if (off || !ok)
+            printf("  set %2d: %3d frames off the mesh, farthest %5d, "
+                   "ended %5d%s\n", i, off, farthest, end,
+                   ok ? "" : "  - did not close up");
+        set_free(&set);
+    }
+    printf("follow: %d sets, %d with a companion entry, %d never off the mesh,"
+           " %d closed to within %d\n", sets, tried, tried - offmesh, arrived,
+           AI_FOLLOW_RANGE);
+    printf("  mean farthest %ld over the 500 frames\n",
+           tried ? far_total / tried : 0);
+    sheets_free(&sh);
+    cast_free(&cast);
+    /* The bearing is exact or it is broken; leaving the mesh is never allowed.
+     * Being left behind by a wall is not a failure - the original has no path
+     * finding either - so it is reported and not counted. */
+    return worst <= 1 && offmesh == 0 && tried > 0;
+}
+
 /* ---- drawing a character ------------------------------------------- */
 
 static void draw_actor(R3dTarget *t, const Bundle *b, const ActorPose *pose,
@@ -617,6 +890,7 @@ static void usage(void)
 "  --flat            do not shade the facets\n"
 "  --cull MODE       none (default), back or front\n"
 "  --shot FILE.ppm   write the first frame out\n"
+"  --shot-at N      write it at frame N instead\n"
 "  --no-window       render without opening a window\n"
 "  --frames N        stop after N frames\n"
 "  --scale N         window magnification (default 3)\n"
@@ -629,7 +903,9 @@ static void usage(void)
 "                    by commas - up:40,-:2,up:60 is a double tap\n"
 "  --events          fire the set's events: the camera cuts, and the doors\n"
 "  --list-scenes | --list-models | --list-objects | --list-chars\n"
-"  --check-mesh | --check-char | --check-doors\n");
+"  --alone           leave the companion out of --drive\n"
+"  --list-sheets     the character sheets, and what each one wears\n"
+"  --check-mesh | --check-char | --check-doors | --check-follow\n");
 }
 
 static int parse_triple(const char *s, int *out)
@@ -692,11 +968,12 @@ static uint32_t pad_at(int frame)
 
 int main(int argc, char **argv)
 {
-    Args a = { "assets/tracks", "assets/manifest.json", NULL, NULL, NULL, NULL, NULL,
+    Args a = { "assets/tracks", "assets/manifest.json", NULL, NULL, NULL, NULL, 0, NULL,
                0, 0, 0, 0, 1, 3, 0, 0, 0,
                -1, 0, -1, 0, 0, 0, 0,
                0, {0,0,0}, 0, {0,0,0},
-               R3D_CULL_NONE, 0, 0, 0, 0 };
+               R3D_CULL_NONE, 0, 0, 0, 0, 0,
+               0 };
 
     for (int i = 1; i < argc; i++) {
         const char *v = i + 1 < argc ? argv[i + 1] : NULL;
@@ -706,6 +983,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--model")    && v) a.model = argv[++i];
         else if (!strcmp(argv[i], "--object")   && v) a.object = argv[++i];
         else if (!strcmp(argv[i], "--shot")     && v) a.shot = argv[++i];
+        else if (!strcmp(argv[i], "--shot-at") && v) a.shot_at = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--scale")    && v) a.scale = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--frames")   && v) a.frames = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--pos")      && v) a.have_pos = parse_triple(argv[++i], a.pos);
@@ -734,9 +1012,12 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--list-models"))  a.list_models = 1;
         else if (!strcmp(argv[i], "--list-objects")) a.list_objects = 1;
         else if (!strcmp(argv[i], "--list-chars"))   a.list_chars = 1;
+        else if (!strcmp(argv[i], "--list-sheets"))  a.list_sheets = 1;
+        else if (!strcmp(argv[i], "--alone"))        a.alone = 1;
         else if (!strcmp(argv[i], "--check-mesh")) { paths(a.tracks); return !check_mesh(); }
         else if (!strcmp(argv[i], "--check-char")) { paths(a.tracks); return !check_char(); }
         else if (!strcmp(argv[i], "--check-doors")) { paths(a.tracks); return !check_doors(); }
+        else if (!strcmp(argv[i], "--check-follow")) { paths(a.tracks); return !check_follow(); }
         else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) { usage(); return 0; }
         else { usage(); return argv[i][0] == '-' ? 1 : 0; }
     }
@@ -776,7 +1057,7 @@ int main(int argc, char **argv)
     /* The cast: track 5's fifteen-piece character bundles. */
     Cast cast;
     int have_cast = 0;
-    if (a.character >= 0 || a.list_chars) {
+    if (a.character >= 0 || a.list_chars || a.list_sheets) {
         if (!cast_open(&cast)) {
             fprintf(stderr, "no character bundles on track 5\n");
             return 1;
@@ -795,6 +1076,46 @@ int main(int argc, char **argv)
                    "%3d animations\n", i, b->piece[0]->offset, b->npieces,
                    verts, faces, cast.nanim[i]);
         }
+        cast_free(&cast);
+        return 0;
+    }
+
+    /* The sheets: what a character is, as against what he looks like.  The
+     * behaviour column is the whole of docs/12-world-and-sheets.md 12.8's open
+     * question - it is one of AICTRL.GAS's fourteen AI commands, in the high
+     * byte of a word whose low byte is something else again. */
+    if (a.list_sheets) {
+        Sheets sh;
+        if (!sheets_load(&sh, path_boot)) {
+            fprintf(stderr, "cannot read the sheets from %s\n", path_boot);
+            return 1;
+        }
+        long off[CAST_MAX];
+        for (int i = 0; i < cast.ncast && i < CAST_MAX; i++)
+            off[i] = cast.bundle[i].piece[0]->offset;
+        sheets_bundles(&sh, off, cast.ncast);
+        int used[CSH_MAX] = { 0 };
+        for (int i = 0; i < sh.nworld; i++) {
+            int k = sheets_of_addr(&sh, sh.world[i].sheet);
+            if (k >= 0) used[k]++;
+        }
+        printf("%d character sheets, %d world records\n", sh.nsheets, sh.nworld);
+        printf("  #  addr    models anims  block  bundle  uses  behaviour\n");
+        for (int i = 0; i < sh.nsheets; i++) {
+            const SheetRec *r = &sh.sheet[i];
+            printf("%3d $%05X  %3d %5d  %5d  %6d  %4d  %s", i, r->addr,
+                   r->models, r->anims, r->block, r->bundle, used[i],
+                   ai_command_name(r->behaviour));
+            if (r->behaviour > AI_FOLLOW_PERSON)
+                printf(" %d", r->behaviour);   /* past the fourteen the 1995
+                                                  LOGICS.INC numbers */
+            if (r->property)
+                printf("   [+%d]", r->property);
+            if (r->model0)
+                printf("   model $%05X in the binary", r->model0);
+            putchar('\n');
+        }
+        sheets_free(&sh);
         cast_free(&cast);
         return 0;
     }
@@ -945,9 +1266,15 @@ int main(int argc, char **argv)
          * first doorway, which is a place the game itself puts people. */
         int32_t sx = pos[0], sz = pos[2];
         if (!a.have_pos && have_set) {
-            if (set.nentries > 0) {
-                sx = set.entry[0].x;
-                sz = set.entry[0].z;
+            /* The first arrival point that is not the companion's - half the
+             * disc's doorways carry two, and the one with bit 0 set is his. */
+            const SetEntry *mine = NULL;
+            for (int k = 0; k < set.nentries && !mine; k++)
+                if (!ENTRY_COMPANION(&set.entry[k]))
+                    mine = &set.entry[k];
+            if (mine) {
+                sx = mine->x;
+                sz = mine->z;
             } else if (set.ntris > 0) {
                 const SetTri *tr = &set.tri[0];
                 int64_t cx = 0, cz = 0;
@@ -982,6 +1309,33 @@ int main(int argc, char **argv)
                 anim_frame(anim, f, &fr);
                 actor.lift += fr.move[1];
             }
+        }
+    }
+
+    /* The companion.  Nothing has to be asked for: the character sheets say
+     * who follows the player, the init table says where he arrives, and the
+     * two together are enough to put a second person in the world.  --alone
+     * leaves him out. */
+    Sheets sheets;
+    Companion co;
+    int have_co = 0;
+    if (have_cast && have_set && a.drive && !a.alone) {
+        if (!sheets_load(&sheets, path_boot))
+            fprintf(stderr, "no character sheets in %s - going alone\n", path_boot);
+        else if (!companion_open(&co, &sheets, &cast))
+            fprintf(stderr, "no aiFollowPlayer sheet with a bundle - going alone\n");
+        else {
+            have_co = 1;
+            companion_place(&co, &set, have_scene ? scene.cam.id : 0xFFFF, &actor);
+            printf("companion: sheet %d, %s, bundle %d with %d animations\n",
+                   co.sheet, ai_command_name(co.ai.behaviour), co.cast,
+                   cast.nanim[co.cast]);
+            if (co.placed)
+                printf("  standing at (%d,%d) on triangle %d facing %d%s\n",
+                       co.actor.x, co.actor.z, co.actor.tri, co.actor.facing,
+                       co.placed == 2 ? "  (no entry of his own: beside you)" : "");
+            else
+                printf("  this set puts him nowhere on its floor\n");
         }
     }
 
@@ -1120,6 +1474,20 @@ int main(int argc, char **argv)
             }
         }
 
+        /* And the companion, through exactly the same three calls. */
+        if (have_co && co.placed && co.bundle) {
+            int32_t root[3];
+            actor_root(&co.actor, co.anim, root);
+            AnimFrame fr;
+            const int8_t *ang = NULL;
+            if (co.anim) { anim_frame(co.anim, co.actor.frame, &fr); ang = fr.angle; }
+            ActorPose pose[ACTOR_MAX_PIECES];
+            actor_pose(co.bundle, ang, co.actor.facing, root, pose);
+            int fa, te, dr;
+            draw_actor(&target, co.bundle, pose, have_scene ? &scene.cam : &solo,
+                       &opts, &fa, &te, &dr);
+        }
+
         if (model) {
             int32_t rot[9], objpos[3] = { pos[0], pos[1], pos[2] };
             r3d_face_matrix(face[0], (face[1] + spin) & 255, face[2], rot);
@@ -1171,7 +1539,7 @@ int main(int argc, char **argv)
             }
         }
 
-        if (a.shot && shots == 0) {
+        if (a.shot && shots == 0 && frame >= a.shot_at) {
             if (!write_ppm(a.shot, target.colour))
                 fprintf(stderr, "cannot write %s\n", a.shot);
             else
@@ -1239,6 +1607,20 @@ int main(int argc, char **argv)
                            (ctl.pad & PAD(JOY_DOUBLE)) ? "   (double tap)" : "");
                     last_stance = ctl.stance;
                     last_anim   = ctl.anim;
+                }
+                /* His frame, after the player's: ControlCode runs down the
+                 * whole active list before ActionCode starts, so the pad he
+                 * presses is aimed at where the player has already got to. */
+                if (have_co) {
+                    uint8_t was = co.ctl.stance;
+                    companion_step(&co, &set, &actor, &cast);
+                    if (STANCE(co.ctl.stance) != STANCE(was)) {
+                        int d = (int)lrint(sqrt((double)co.ai.dist2));
+                        printf("frame %4d: companion %-5s animation %d, "
+                               "%d behind you\n", frame,
+                               control_stance_name(co.ctl.stance),
+                               co.ctl.anim, d);
+                    }
                 }
             } else if (a.walk)
                 actor.facing = (uint8_t)(actor.facing + in.dx * 3);
@@ -1340,6 +1722,23 @@ int main(int argc, char **argv)
                                             actor.facing);
                                 printf("  into set %d, which lists no entry"
                                        " for view %d\n", si, from_id);
+                            }
+                            /* And the other half of the doorway.  He is put
+                             * down from the same table, keyed on the same
+                             * view - the entry with bit 0 of its flags set. */
+                            if (have_co) {
+                                companion_place(&co, &set, from_id, &actor);
+                                if (co.placed == 1)
+                                    printf("  the companion arrives at (%d,%d)"
+                                           " facing %d\n", co.actor.x,
+                                           co.actor.z, co.actor.facing);
+                                else if (co.placed == 2)
+                                    printf("  the companion follows you in:"
+                                           " this view lists no arrival for"
+                                           " him\n");
+                                else
+                                    printf("  the companion is left behind:"
+                                           " nowhere on this floor\n");
                             }
                         }
                     } else if (target_scene < 0) {

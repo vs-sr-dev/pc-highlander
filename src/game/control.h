@@ -124,6 +124,11 @@ int  control_turn(const Control *c, int fps);
 /* The table this port drives Quentin with, and what each animation in it is.
  * `control_name` is for the log line, so a run can be read. */
 extern const LogicTable control_quentin;
+
+/* And the one it drives a follower with: four animations rather than thirty,
+ * which is what a sheet that loads BO_LOGICS_2A - "stand & walk" - has to
+ * work from. */
+extern const LogicTable control_follower;
 const char *control_stance_name(uint8_t stance);
 
 #endif
