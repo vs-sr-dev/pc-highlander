@@ -58,6 +58,8 @@ typedef struct {
     uint8_t facing;             /* citFacing, on the 256-step circle       */
     int16_t radius;             /* wstRadius                               */
     int     collided, colturn;  /* citFlags COLLIDE and COLTURN            */
+    int16_t speed;              /* citSpeed: carried because the scripts
+                                   write it, not yet read by the movement  */
     int32_t lift;               /* the animation's own accumulated y move  */
     int     frame;              /* the frame last shown                    */
 } Actor;

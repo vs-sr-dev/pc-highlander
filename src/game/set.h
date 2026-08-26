@@ -74,6 +74,9 @@ typedef struct {
     SetEvent *event;
     SetVert  *vert;
     SetTri   *tri;
+    uint8_t  *script;           /* the bytecode at script_off, to the end of
+                                   the slot; NULL when this set has none    */
+    int       script_len;
 } Set;
 
 int  set_load(Set *s, const char *track3, int index);

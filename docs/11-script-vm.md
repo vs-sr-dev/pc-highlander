@@ -301,3 +301,97 @@ The disassembler traces the flow from offset 0, follows `bra` / `bsr` / `spawn`
 / `kill` / `waitkey` targets, sweeps whatever the trace did not reach, and stops
 at the padding. It resolves scene ids against `sets.json` and `cinepak` blocks
 against `films.tsv` when those files are present.
+
+## 11.9 The machine, ported
+
+`src/script/vm.c` is the same machine with the handlers written out rather than
+printed, and `src/game/act.c` is the table it operates on.
+
+### What the VM needed underneath it
+
+Almost every command that does something to the world does it to an **active
+character table record** — `LOGICS.INC`'s `actRecord` — so that table had to
+exist before the interpreter could. It is one record per character who is in
+the world right now: which world entry he is, the joypad he is pressing, the AI
+that may be pressing it, and the instance standing on the floor.
+
+That is also where `AICTRL.GAS`'s two master loops belong, and putting them
+there is what makes the script commands short. `chase` is four lines because
+all it does is write `aiGotoPerson` into a record the AI loop is already
+walking; `freeze` is `aiNop`; `release` clears one bit. The bit is
+`ACTControlled`, and it is deliberately *not* "is he the player": the test that
+picks `ComputerControl` over `PlayerControl` looks at it first, so a script
+takes the pad away from the player and gives it back with the same flag.
+
+| script command | what it writes |
+|---|---|
+| `chase` / `attack` / `face` | `aiGotoPerson` / `aiAttackPerson` / `aiFacePerson`, and the target world entry in `AIData1` |
+| `goto` / `turnto` | `aiGotoPosition` / `aiFacePosition`, and an (x, z) in `AIData1` and `2` |
+| `attplay` | `aiAttackPlayer`, and *clears* `ACTControlled` |
+| `freeze` | `aiNop`, and sets it |
+| `release` | clears it, and nothing else |
+| `default` | `aiDefault`, which reloads `cshBehaviour` |
+
+### Where the port and the original differ
+
+Three places, all of them stated here rather than hidden:
+
+* **Slot padding ends a process.** A script runs to the end of what was written
+  and the rest of its 56-block slot is zeros — and a zero command is `not r0`,
+  which the real machine would execute for ever, spinning the GPU without
+  stopping the game. Two sets do exactly that: set 4's `ScriptOffset` points
+  straight at padding, and set 37's script is two commands (`sett #0, r1` and a
+  `gvar` write that clears the byte `PRI` sets when the game ends) and then
+  padding. The disassembler reached the same reading independently, measuring
+  those two at 0 and 8 bytes, and **no shipped script uses `not` at all** —
+  `neg` is the only one of the three single-register commands that appears.
+* **A per-process command budget.** The original has none, and does not need
+  one: a script with no `quit` in its loop hangs the GPU and that is that.
+  Counting the overrun is how a check can see one, and it counts zero.
+* **The `citRecord` and `actRecord` fields** are a struct here rather than a
+  block of memory addressed by byte offset, so the offsets the shipped scripts
+  actually use are mapped and anything else is counted. The disc's scripts
+  touch eight fields in all — `Life`, `Ypos`, `Parent` and `Radius` on the
+  world record, `Stance`, `Frame` and `Speed` on the instance, `World` on the
+  ACT record — and the count of unmapped accesses is zero.
+
+`cinepak`, `redbook`, `sample` and `waveexit` post their event and wait for the
+host to clear it, which is the original's own handshake and all a script ever
+sees of them. Playing the film is phase 6's and phase 7's problem, not the
+machine's.
+
+### The check
+
+```
+hlview --check-script
+```
+
+loads each of the twenty-seven set scripts in turn beside the resident one and
+runs them for 1,200 game frames against a real set and a real character. Two
+passes: the first is the set as you would walk into it, and most scripts spend
+it sitting on a game bit that nothing has set — which is correct, and reaches
+about a third of the machine. The second stirs the world underneath them, game
+bits and the "used" latch and one pad key at a time, and starts MAINSCRIPT's
+fourth block the way the engine does, from outside the bytecode with `r0`, `r1`
+and `r2` already set.
+
+```
+scripts: 48 sets, 27 of them with one, plus MAINSCRIPT in every run
+  585,226 commands executed, 46 of the 83 opcodes exercised
+  0 past the dispatch table, 0 processes overran, 0 fields with no home
+  2 processes ran into their slot's padding and stopped
+  10 camera cuts asked for, 0 of them to a view the set does not list, 22 films
+```
+
+The four numbers that have to be zero are zero. **Nothing past the dispatch
+table** matters most: the original abandons the process on a bad command, so a
+decoder that drifts by a byte — a missed extra long, an operand class read at
+the wrong boundary — shows up as scripts quietly dying rather than as an error.
+**Nothing overran**, so every loop on the disc reaches a `quit`. And every
+`camera` a script asked for named a view its own set lists, which is an operand
+checked against a table the VM never reads.
+
+Forty-six of 83 is against the whole machine; the disc's scripts contain 49
+distinct opcodes, and the three of those never reached — `kill`, `actread` and
+`poke` — sit behind branches this stimulus does not open. The rest of the 83
+are opcodes no shipped script uses at all.

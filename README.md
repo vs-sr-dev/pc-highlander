@@ -94,6 +94,20 @@ A native PC reimplementation of **Highlander: The Last of the MacLeods**
 > of 256 over 3,600 directions, and in all twenty sets that carry an arrival for
 > him he is never once off the collision mesh.
 >
+> **And the scripts run.** The puzzles, the cutscene triggers and the menus are
+> bytecode for a small machine that lived on the GPU, and `src/script/vm.c` is
+> that machine with its handlers written out instead of printed. It needed the
+> active character table underneath it first — one record per character in the
+> world, which is what `AICTRL.GAS`'s two master loops walk and what makes a
+> script command like `chase` four lines: it writes `aiGotoPerson` into a record
+> the AI loop is already reading. `hlview --check-script` loads each of the
+> twenty-seven set scripts beside the resident one and runs them for 1,200
+> frames: **585,226 commands, nothing past the dispatch table, no process
+> overrunning, and every `camera` naming a view its own set lists.** The one
+> place it differs from the original is stated rather than hidden — a zero
+> command is slot padding here and `not r0` there, which two sets would spin the
+> GPU on for ever.
+>
 > Two smaller things the disc gave up on the way. The camera footer's long at
 > +32 is not the constant session 3 took it for: it is the **set's own block on
 > track 3**, which names the set a view belongs to outright, and it checks out
@@ -191,6 +205,7 @@ build/hlview --check-doors              # the doorways, over the whole disc
 build/hlview --scene DUN1_CAM00 --char 0 --drive   # ...and Ramirez follows you
 build/hlview --list-sheets              # the 40 sheets, and what each one wears
 build/hlview --check-follow             # the bearing, and the follow over the disc
+build/hlview --check-script             # every script on the disc, run
 ```
 
 More in [src/README.md](src/README.md).

@@ -25,6 +25,8 @@
 #include "game/set.h"
 #include "game/sheet.h"
 #include "game/ai.h"
+#include "game/act.h"
+#include "script/vm.h"
 #include "r3d/r3d.h"
 #include "platform/window.h"
 
@@ -851,6 +853,188 @@ static int check_follow(void)
     return worst <= 1 && offmesh == 0 && tried > 0;
 }
 
+/* ---- the scripts, running ------------------------------------------- */
+
+/* MAINSCRIPT is not on a data track: it sits in the retail binary right behind
+ * the script VM's own GPU module and runs to the next module header.
+ * docs/11-script-vm.md 11.1. */
+#define MAIN_MEM  0x2FEB8
+#define MAIN_END  0x30130
+#define MAIN_FILE (MAIN_MEM - 0x5000 + 0x12600)
+
+/* Every script on the disc, run.
+ *
+ * The disassembler settled that all 1,173 commands *decode*; whether they
+ * *execute* is a different question, and the difference is where a port of a
+ * machine like this goes wrong - a mis-decoded operand class, a branch
+ * condition read the wrong way round, a handler that never yields.  So load
+ * each of the twenty-seven set scripts in turn beside the resident one, run
+ * them for a few hundred game frames against a real set and a real character,
+ * and count.
+ *
+ * Three things must come out at zero.  No command past the dispatch table -
+ * the original abandons the process on one, so a decoder that drifts by a byte
+ * shows up as scripts quietly dying.  No process hitting the command budget -
+ * that is a loop with no `quit` in it, which on the real machine hangs the
+ * GPU.  And no script left running off the end of its own slot. */
+static int check_script(void)
+{
+    Blob boot = io_read(path_boot);
+    if (!boot.data) {
+        fprintf(stderr, "cannot read %s\n", path_boot);
+        return 0;
+    }
+    Sheets sh;
+    if (!sheets_load(&sh, path_boot)) {
+        fprintf(stderr, "no world table in %s\n", path_boot);
+        io_free(&boot);
+        return 0;
+    }
+    /* The world table as bytes, which is what the machine addresses. */
+    const uint8_t *world = boot.data + (0x15458 - 0x5000 + 0x12600);
+    const uint8_t *main  = boot.data + MAIN_FILE;
+
+    long total = 0, unknown = 0, unmapped = 0, overrun = 0, films = 0, cuts = 0,
+         padding = 0, quiet_ops = 0, stray = 0;
+    long seen[VM_LASTOP];
+    memset(seen, 0, sizeof seen);
+    int scripts = 0, sets = 0;
+
+    for (int i = 0; i < SET_COUNT; i++) {
+        Set set;
+        if (!set_load(&set, path_set, i))
+            continue;
+        sets++;
+
+        /* Somewhere to stand, and somebody to be.  A script that says
+         * `select #0` wants an active character behind world record 0. */
+        ActTable acts;
+        act_init(&acts);
+        int p = act_add(&acts, 0, 1, 0, NULL, 0, &control_quentin);
+        acts.player = p;
+        if (set.nentries > 0)
+            actor_place(&acts.a[p].actor, &set, set.entry[0].x, set.entry[0].z,
+                        ENTRY_FACING(&set.entry[0]));
+
+        Vm vm;
+        vm_init(&vm, world, main, MAIN_END - MAIN_MEM);
+        vm_register(&vm, 0);
+        vm.act = &acts;
+        vm.set = &set;
+        vm.curset = (uint16_t)i;
+        vm.scene = set.nscenes ? set.scene[0].id : 0;
+        vm_set_script(&vm, i, set.script, set.script_len);
+
+        /* Two passes.  The first is the set as you would walk into it, and
+         * most scripts spend it sitting on a game bit that nothing has set -
+         * which is correct, and reaches about a third of the machine.  The
+         * second stirs the world underneath them: game bits go up and down, a
+         * different world entry is "used" every few frames, and one pad key at
+         * a time is held.  It is not a playthrough, but it drives the scripts
+         * down the branches a playthrough would, and what it is really
+         * checking is that no handler falls over when it gets there. */
+        uint32_t rnd = 0x1234567u + (uint32_t)i * 2654435761u;
+        for (int pass = 0; pass < 2; pass++) {
+            for (int f = 0; f < 600; f++) {
+                if (pass) {
+                    rnd = rnd * 1103515245u + 12345u;
+                    int b = (int)((rnd >> 16) & 63);
+                    if (rnd & 0x100)
+                        vm.gamestate[b >> 5] |=  1u << (b & 31);
+                    else
+                        vm.gamestate[b >> 5] &= ~(1u << (b & 31));
+                    vm.used = (int)((rnd >> 8) & 0xFF);
+                    vm.pad  = 1u << ((rnd >> 24) & 31);
+                    for (int g = 0; g < 3; g++)
+                        vm.gvar[g] = (int32_t)((rnd >> (g * 3)) & 3);
+                    /* MAINSCRIPT's fourth block is the "item used" handler,
+                     * and nothing in any script spawns it: the engine starts
+                     * it with r0, r1 and r2 already set when the player uses
+                     * something.  So does this, every 200 frames. */
+                    if (f % 200 == 100)
+                        vm_start(&vm, VM_MAIN, 0x10,
+                                 ((f / 200) & 1) ? 0 : 1, 5,
+                                 (f / 200) & 1);
+                }
+                vm_frame(&vm);
+                /* The host's half of the handshake: the machine posts an event
+                 * and waits for it to be cleared.  Here that is instant, which
+                 * is what lets a script get past a film rather than sitting on
+                 * it for ever. */
+                if (vm.scriptevent) {
+                    if (vm.scriptevent == EV_CINEPAK + 1)  films++;
+                    if (vm.scriptevent == EV_SCENE + 1) {
+                        /* A `camera` names a view by scene id, and a set
+                         * lists every view it can cut to - its own and the
+                         * ones it borrows.  If the id the script asks for is
+                         * not in that list, either the operand is being
+                         * decoded wrong or the set table is. */
+                        cuts++;
+                        int known = 0;
+                        for (int k = 0; k < set.nscenes; k++)
+                            if (set.scene[k].id == vm.scriptscene)
+                                known = 1;
+                        if (!known) {
+                            stray++;
+                            printf("  set %2d: camera to scene %d, which this "
+                                   "set does not list\n", i, vm.scriptscene);
+                        }
+                        vm.scene = vm.scriptscene;
+                    }
+                    vm.scriptevent = 0;
+                    vm.redbook_done = 1;
+                }
+                if (vm.gameover)
+                    vm.gameover = 0;    /* `reset` restarts the machine; here
+                                           it is noted and cleared           */
+            }
+            if (pass == 0)
+                quiet_ops += 0;         /* the split is reported below       */
+        }
+
+        if (set.script_len)
+            scripts++;
+        total    += vm.executed;
+        unknown  += vm.unknown_op;
+        unmapped += vm.unmapped;
+        overrun  += vm.overrun;
+        padding  += vm.padding;
+        for (int k = 0; k < VM_LASTOP; k++)
+            seen[k] += vm.opcount[k];
+        if (vm.unknown_op || vm.overrun)
+            printf("  set %2d: %ld commands, %ld past the table, %ld overran\n",
+                   i, vm.executed, vm.unknown_op, vm.overrun);
+        else if (set.script_len)
+            printf("  set %2d: %6ld commands, %d process%s still alive\n", i,
+                   vm.executed, vm_active(&vm), vm_active(&vm) == 1 ? "" : "es");
+        set_free(&set);
+    }
+
+    int used = 0;
+    for (int k = 0; k < VM_LASTOP; k++)
+        if (seen[k])
+            used++;
+    printf("scripts: %d sets, %d of them with one, plus MAINSCRIPT in every "
+           "run\n", sets, scripts);
+    printf("  %ld commands executed, %d of the %d opcodes exercised\n",
+           total, used, VM_LASTOP);
+    printf("  %ld past the dispatch table, %ld processes overran, "
+           "%ld fields this port has no home for\n", unknown, overrun, unmapped);
+    printf("  %ld processes ran into their slot's padding and stopped\n", padding);
+    printf("  %ld camera cuts asked for, %ld of them to a view the set does "
+           "not list, and %ld films\n", cuts, stray, films);
+
+    printf("  never executed:");
+    for (int k = 0; k < VM_LASTOP; k++)
+        if (!seen[k])
+            printf(" %s", vm_opname(k));
+    putchar('\n');
+
+    sheets_free(&sh);
+    io_free(&boot);
+    return unknown == 0 && overrun == 0 && stray == 0 && total > 0;
+}
+
 /* ---- drawing a character ------------------------------------------- */
 
 static void draw_actor(R3dTarget *t, const Bundle *b, const ActorPose *pose,
@@ -1018,6 +1202,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--check-char")) { paths(a.tracks); return !check_char(); }
         else if (!strcmp(argv[i], "--check-doors")) { paths(a.tracks); return !check_doors(); }
         else if (!strcmp(argv[i], "--check-follow")) { paths(a.tracks); return !check_follow(); }
+        else if (!strcmp(argv[i], "--check-script")) { paths(a.tracks); return !check_script(); }
         else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) { usage(); return 0; }
         else { usage(); return argv[i][0] == '-' ? 1 : 0; }
     }

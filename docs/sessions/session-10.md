@@ -1,4 +1,4 @@
-# Session 10 — Ramirez, and the word that says he follows
+# Session 10 — Ramirez, and the machine that watches him
 
 Session 9's TODO put Ramirez first: "the init table has been carrying his
 arrival point in bit 0 of every doorway all along, `AICTRL.GAS` has an
@@ -136,6 +136,53 @@ Quentin walks around `DUN1` under the pad, the camera cuts where the event
 lines say, the doors lead into the next set — and Ramirez comes too. That is
 phase 4's stated success criterion, and a little more than it.
 
+## 6. And the scripts, running
+
+Session 9's second item, in the same evening. `src/script/vm.c` is
+`SCRIPT.GAS`'s interpreter written out: all 83 opcodes, the process table with
+its compacted list and its identifiers, the five condition masks, and the
+world-state and instance access the commands reach through.
+
+**It needed a table underneath it first.** Almost every command that does
+something to the world does it to an active character table record, so
+`src/game/act.c` is `LOGICS.INC`'s `actRecord` — and once that exists,
+`AICTRL.GAS`'s two master loops belong to it rather than to `main.c`, and the
+script commands get short. `chase` is four lines: it writes `aiGotoPerson` into
+a record the AI loop is already walking. `freeze` is `aiNop`. `release` clears
+one bit — `ACTControlled`, which is deliberately not "is he the player", so a
+script takes the pad away from the player and hands it back with the same flag.
+
+**The check runs every script on the disc.** Each of the twenty-seven set
+scripts is loaded beside the resident one and run for 1,200 game frames against
+a real set and a real character — one pass as you would walk in, one with the
+world stirred underneath it, and MAINSCRIPT's orphan "item used" block started
+the way the engine starts it, from outside the bytecode.
+
+```
+scripts: 48 sets, 27 of them with one, plus MAINSCRIPT in every run
+  585,226 commands executed, 46 of the 83 opcodes exercised
+  0 past the dispatch table, 0 processes overran, 0 fields with no home
+  2 processes ran into their slot's padding and stopped
+  10 camera cuts asked for, 0 of them to a view the set does not list, 22 films
+```
+
+Nothing past the dispatch table is the one that matters: the original abandons
+a process on a bad command, so a decoder that drifts by a byte shows up as
+scripts quietly dying rather than as an error. Nothing overran, so every loop
+on the disc reaches a `quit`. And every `camera` named a view its own set
+lists — an operand checked against a table the VM never reads.
+
+**One divergence, stated.** A zero command is slot padding here and `not r0` on
+the real machine, which would execute it for ever. Two sets do exactly that:
+set 4's `ScriptOffset` points straight at padding and set 37's script is two
+commands and then padding. The disassembler measured those two at 0 and 8 bytes
+independently, and no shipped script uses `not` at all.
+
+The machine is not wired into the live loop yet — that wants the game loop
+lifted out of `main.c`, which is the next thing rather than a late-evening one.
+
+→ [11-script-vm.md](../11-script-vm.md) 11.9
+
 ---
 
 ## Still open
@@ -147,17 +194,21 @@ phase 4's stated success criterion, and a little more than it.
   follower's.
 * **The 15th AI command**, which `LOGICS.INC` does not number.
 * **The low byte of `cshBehaviour`** on the item and weapon sheets.
-* **The scripts, running** — session 9's second item, not started.
+* **The machine in the live loop.** The VM runs every script on the disc under
+  `--check-script`, but `--drive` does not run one yet: the game loop is still
+  inside `main.c` and wants lifting out into a module of its own first.
 * Unchanged: track 9 and `HIRESDATA`; `ZMODELT`'s sense; the non-uniform `face`
   elevation on the items; the three unreferenced films; the 125 unnamed world
   records; the seventeen unnamed GPU modules; the `SLP` payload; `gvar[0..2]`.
 
 ## TODO for session 11
 
-1. **The scripts, running.** The VM is read (11) and every set carries one at
-   `ScriptOffset`. The doorways now change sets and a second character now
-   stands in them; a script is what is supposed to be watching. It is also what
-   assigns Ramirez his sheet, which is why world record 1 carries none.
+1. **The game loop, out of `main.c`.** Everything is now in place for a set to
+   be lived in — the floor, the doorways, two characters, the machine that
+   watches them — and the thing in the way is that `--drive` is a branch inside
+   a viewer. A `game.c` owning the set, the ACT table and the VM turns
+   `--check-script`'s machine into a running one, and is what lets a script
+   assign Ramirez his sheet, which is why world record 1 carries none.
 2. **Combat, or at least its movement half.** `AIAttackCode` is ported down to
    the point where it needs `actStatus`, the hit frames and the opponent's own
    joypad — which is `PCOL.TXT`, and phase 5.

@@ -103,6 +103,19 @@ int set_load(Set *s, const char *track3, int index)
         for (int k = 0; k < 3; k++) s->tri[i].adj[k]  = be16s(p + 8 + k * 2);
     }
 
+    /* The script, if this set has one.  It runs from ScriptOffset to the end
+     * of the slot - the rest of the slot is padding, and the VM stops when a
+     * process runs off the end of it or reaches an rts with nothing to return
+     * to.  Twenty-seven of the 48 sets carry one (docs/11-script-vm.md 11.5). */
+    if (s->script_off > 0 && s->script_off < SET_SLOT) {
+        s->script_len = SET_SLOT - (int)s->script_off;
+        s->script = malloc((size_t)s->script_len);
+        if (s->script)
+            memcpy(s->script, d + s->script_off, (size_t)s->script_len);
+        else
+            s->script_len = 0;
+    }
+
     free(d);
     return 1;
 }
@@ -114,6 +127,7 @@ void set_free(Set *s)
     free(s->event);
     free(s->vert);
     free(s->tri);
+    free(s->script);
     memset(s, 0, sizeof *s);
 }
 

@@ -179,11 +179,24 @@ phase 5 owes it is `AIAttackCode`'s and `AIShootCode`'s other half, which needs
 `actStatus`, the hit frames and the opponent's own joypad.
 **Success criterion:** you can fight a Hunter and one of you dies.
 
-### Phase 6 — The game tells a story
+### Phase 6 — The game tells a story — **started**
 The script VM (60+ opcodes), a `.SCT` compiler (to rebuild scripts from the
 available source and for debugging), scene events, world state bits, FMV
 triggers.
 **Success criterion:** the main menu works and the intro plays.
+
+Done so far: **the machine itself.** `src/script/vm.c` is `SCRIPT.GAS`'s
+interpreter — all 83 opcodes, the process table, the condition masks, the
+world-state and instance access — running on `src/game/act.c`, the active
+character table `AICTRL.GAS`'s two master loops walk. `hlview --check-script`
+loads every one of the twenty-seven set scripts beside the resident one and
+runs them: 585,226 commands, nothing past the dispatch table, no process
+overrunning its budget, and every `camera` naming a view its set lists
+([11-script-vm.md](11-script-vm.md) 11.9).
+
+Still to do here: wire the machine into the live loop rather than the check —
+which wants the game loop lifted out of `main.c` first — and then the films,
+the menu and the state that survives a reset.
 
 ### Phase 7 — The game speaks
 16-voice PCM mixer, Red Book playback from the image's audio track, synchronised

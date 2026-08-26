@@ -19,6 +19,10 @@ game/         scene.c  a backdrop slot: XOR key, colour, depth, camera footer
               sheet.c  the world table and the character sheets, out of the
                        resident binary: who a character is, which bundle he
                        wears, and what he does when nobody drives him
+              act.c    the active character table: one record per character in
+                       the world, and AICTRL.GAS's two master loops over it
+script/       vm.c     SCRIPT.GAS's interpreter: 83 opcodes, the process
+                       table, and the world the commands reach into
 r3d/          r3d.c    projection, matrices, scanline fill, Z-buffer
 platform/     window.c the only file that knows SDL exists
 util/         io.c     whole-file reads and big-endian accessors
@@ -45,6 +49,7 @@ build/hlview --check-doors                         the doorways, checked
 build/hlview --list-sheets                         the sheets, and what each wears
 build/hlview --scene DUN1_CAM00 --char 0 --drive   ...and Ramirez follows you
 build/hlview --check-follow                        the bearing, and the follow
+build/hlview --check-script                        every script on the disc, run
 build/hlview --help
 ```
 
