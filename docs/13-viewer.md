@@ -1,8 +1,10 @@
 # 13 — The viewer, and the three things it had to settle
 
-Status: **phase 3 done.** `src/` builds `hlview`, which opens a backdrop, shows
-its Z-buffer, spins a model extracted from the disc, and composites that model
-into a scene depth-tested against the backdrop's own Z half.
+Status: **phase 3 done, phase 4 begun.** `src/` builds `hlview`, which opens a
+backdrop, shows its Z-buffer, spins a model extracted from the disc, and
+composites that model into a scene depth-tested against the backdrop's own Z
+half. It now also loads the set a view belongs to, draws its collision mesh over
+the picture, and stands objects on the floor (13.7, 13.8).
 
 Everything before this phase could be read. Nothing here could: the roadmap left
 three conventions explicitly unresolved, because none of them can be tested
@@ -132,9 +134,9 @@ backdrop's. The difference is what the scenery hid.
 
 ```
 $ hlview --scene TENT6_CAM01 --model boot:6 --pos -100,100,-100 --face 192,0,0
-silhouette 74 px, 74 visible, 0 hidden by the scene
+silhouette 72 px, 72 visible, 0 hidden by the scene
 $ hlview --scene TENT6_CAM01 --model boot:6 --pos 35,100,-100 --face 192,0,0
-silhouette 74 px, 33 visible, 41 hidden by the scene
+silhouette 75 px, 34 visible, 41 hidden by the scene
 $ hlview --scene TENT6_CAM01 --model boot:6 --pos 10,100,-100 --face 192,0,0
 silhouette 74 px, 0 visible, 74 hidden by the scene
 ```
@@ -143,26 +145,108 @@ Three positions on one tent floor, 135 units apart at the widest: the bottle
 in the open, the bottle with its left half cut along the edge of the tent pole, and the
 bottle entirely behind the pole. Same code, same scene, one number moved.
 
-## 13.6 Open: objects sit below the ground the backdrop draws
+## 13.6 Why objects sit below the ground the backdrop draws
 
 Placing an item at its world position with `y` = the collision triangle's height
-buries it. It is not subtle — in `SHANR2_CAM05` the wine bottle keeps 29 pixels
-of 135, the rest below the cobbles; in `TENT6_CAM01` a bottle at height 1 is
-gone entirely, and only clears the floor at about y = 100.
+buries it: in `SHANR2_CAM05` the wine bottle keeps 29 pixels of 135, the rest
+below the cobbles, and in `TENT6_CAM01` a bottle at height 1 is gone entirely.
 
-The offset is set-dependent and in the range of roughly 50 to 130 units, against
-a character 280 tall. Two explanations fit and we cannot yet separate them:
+That was left open with two candidate explanations. It is now measured, and the
+answer is the first of them, with a caveat.
 
-* the backdrops model ground with relief — cobbles, sand, a raised tent floor —
-  and the collision mesh is a flat plane through the bottom of it;
-* the engine places a model's *origin* somewhere above the ground, which it must
-  do anyway: a character's origin is mid-body, and a bottle's is 18 units above
-  its base.
+**The Z-buffer inverts.** Every pixel of a backdrop is a surface the renderer
+saw, and phase 3 settled enough to invert it — the footer gives the rotation and
+the camera position, `65536 − depth` gives the distance in front, and the
+projection is known. So `world = campos + (65536 − depth) * (Mᵀ · d)` recovers
+the world point behind every one of the 64,000 pixels.
+[tools/scene/backproj.py](../tools/scene/backproj.py) does it.
 
-Phase 4 has to answer this to stand a character on a floor, and the character
-sheets are the place to look.
+**The reconstruction is sound.** Two cameras looking at the same set must agree,
+and on DUN1 — comparing only cells where each camera saw one flat surface, since
+a cell where either was looking at a jumble compares two different things — 71%
+of 552 shared cells agree within 25 units, median difference 0.0, interquartile
+range 0.0. Sets built in storeys, like D1, disagree by design: one cell in plan
+holds more than one floor.
 
-## 13.7 Building and running
+**The height word is the world y of the floor, at 1:1.** D1 is the set that can
+prove it, because it has real vertical structure. Comparing the height of each
+collision triangle against the surface its backdrops draw above it:
+
+```
+drawn floor = 0.962 * collision height + 36.7      r = 0.944, 239 triangles
+height   1 -> floor    44        height  1401 -> floor  1407
+height 401 -> floor   400        height  1673 -> floor  1680
+height 801 -> floor   775        height  2473 -> floor  2468
+```
+
+Over 2,500 units, no scale factor, no offset that matters.
+
+**What is left is the art.** The residual is relief the flat mesh approximates:
+about 12 units in DUN1, about 70 under the wine bottle in TENT6, where the tent
+floor is a raised mound. It is not a format question and there is nothing to
+decode; the collision mesh is simply a plane through the bottom of a modelled
+surface. The engine should do what the original did — take the triangle's height
+as `GROUNDHEIGHT` — and a bottle 69 units tall will sit a little low in the
+sets whose ground is bumpiest.
+
+The second candidate, a vertical offset in the model, is ruled out for items:
+the nineteen models in the binary carry **no origin points at all**. The
+characters do, but they are a skeleton rather than a datum — the torso publishes
+origins numbered 128, 135, 138 and 141, and the next pieces are anchored at 135,
+136, 137, which is how the fifteen parts chain together. That is phase 4's
+business, not this question's.
+
+## 13.7 The floor, in the viewer
+
+The viewer loads the set a view belongs to — `src/game/set.c` reads track 3
+directly and agrees with `setx.py` set for set — and uses it for two things.
+
+`--mesh` draws the collision mesh over the backdrop, walls red and edges with a
+neighbour green. In `CA_CAM03` its right-hand boundary runs along the base of
+the round building and its far edge stops at the foot of the gate; in
+`DUN1_CAM00` the red line sits exactly at the foot of the palisade. It is drawn
+*without* the depth test, deliberately: the collision plane is under the drawn
+ground by the amounts in 13.6, so testing it against the backdrop hides the
+whole mesh.
+
+An object is then put on the floor rather than at y = 0, which is what every one
+of the 197 world records carries. `--no-ground` turns that off.
+
+`--check-mesh` is the regression test for the triangle search, and 13.8 is what
+it found.
+
+## 13.8 The triangle search is a list, not a walk
+
+`FINDTRI.GAS` says so in a comment, and says why:
+
+> so we can't just keep jumping to the first edge which the test point is
+> outside of, because it would be possible to generate a structure where a
+> point couldn't ever be reached (due to looping)
+
+Written the greedy way — step across whichever edge the point is beyond, keep a
+visited list — it fails on **258 of the 5,342 triangles**. Written the way the
+comment describes, as a search that puts the current triangle on a list and adds
+each triangle's three neighbours as it goes, it fails on none of them.
+
+`--check-mesh` measures both ends of that. For every triangle of every set it
+takes the centroid, which is inside that triangle by construction, and searches
+for it:
+
+```
+mesh walk vs scan: 5342 triangles, 0 disagreements, 0 centroids the scan
+  itself could not place
+  from an arbitrary start: 5295 found across the adjacency, 84.3 triangles
+  examined on average, 47 gave up into a full scan
+  from five triangles away, which is where movement always starts: 5342
+  searches, 0 wrong, 0 gave up, 5.1 triangles examined on average
+```
+
+The 47 are not failures: 19 of the 48 meshes come in more than one piece, and an
+arbitrary start can be on an island the target is not on. From a connected
+start — the only case movement is ever in, since a character's previous triangle
+is where the search begins — it is 5,342 out of 5,342.
+
+## 13.9 Building and running
 
 SDL3, C99, one Makefile. On Windows that means an MSYS2 mingw64 shell
 (`pacman -S mingw-w64-x86_64-sdl3`).
@@ -173,6 +257,8 @@ build/hlview --scene CA_CAM03                       # a backdrop
 build/hlview --scene CA_CAM03 --depth               # its Z half as grey
 build/hlview --model boot:6 --spin                  # the wine bottle, turning
 build/hlview --scene TENT6_CAM01 --object #190 --model boot:6   # that tent's own bottle
+build/hlview --scene DUN1_CAM00 --mesh                 # the floor, over the art
+build/hlview --check-mesh                             # the triangle search, checked
 build/hlview --list-scenes | --list-models | --list-objects
 ```
 

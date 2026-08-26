@@ -84,6 +84,16 @@ void r3d_place(R3dXform *x, const SceneCam *cam,
     }
 }
 
+void r3d_to_view(const R3dXform *x, const int32_t w[3], int32_t out[3])
+{
+    for (int i = 0; i < 3; i++) {
+        int64_t s = 0;
+        for (int k = 0; k < 3; k++)
+            s += (int64_t)x->rot[i * 3 + k] * w[k];
+        out[i] = (int32_t)(s >> 14) + x->pos[i];
+    }
+}
+
 static void xform(const R3dXform *x, const int16_t v[3], int32_t out[3])
 {
     for (int i = 0; i < 3; i++) {
@@ -210,6 +220,43 @@ static uint16_t shade(uint16_t colour, double lum)
     unsigned b = (unsigned)(((colour >>  6) & 0x1F) * lum + 0.5);
     unsigned g = (unsigned)(( colour        & 0x3F) * lum + 0.5);
     return (uint16_t)((r << 11) | (b << 6) | g);
+}
+
+void r3d_line(R3dTarget *t, const int32_t a[3], const int32_t b[3],
+              uint16_t colour, int depth_test)
+{
+    Vec va = { a[0], a[1], a[2] }, vb = { b[0], b[1], b[2] };
+    const double lim = -(double)R3D_ZMIN;
+    if (va.z > lim && vb.z > lim)
+        return;
+    if (va.z > lim || vb.z > lim) {         /* clip the end that is too near */
+        double s = (lim - va.z) / (vb.z - va.z);
+        Vec c = { va.x + (vb.x - va.x) * s, va.y + (vb.y - va.y) * s, lim };
+        if (va.z > lim) va = c; else vb = c;
+    }
+    double za = -va.z, zb = -vb.z;
+    double xa = R3D_CX + va.x * R3D_XSCALE / za;
+    double ya = (R3D_H - 1) - (R3D_CY + va.y * R3D_YSCALE / za);
+    double xb = R3D_CX + vb.x * R3D_XSCALE / zb;
+    double yb = (R3D_H - 1) - (R3D_CY + vb.y * R3D_YSCALE / zb);
+
+    int steps = (int)(fabs(xb - xa) + fabs(yb - ya)) + 1;
+    if (steps > 4096)
+        steps = 4096;
+    for (int i = 0; i <= steps; i++) {
+        double u = (double)i / steps;
+        int px = (int)(xa + (xb - xa) * u + 0.5);
+        int py = (int)(ya + (yb - ya) * u + 0.5);
+        if (px < 0 || px >= R3D_W || py < 0 || py >= R3D_H)
+            continue;
+        int32_t z = (int32_t)(za + (zb - za) * u + 0.5);
+        int k = py * R3D_W + px;
+        if (depth_test && z >= t->depth[k])
+            continue;
+        t->colour[k] = colour;
+        if (depth_test)
+            t->depth[k] = z;
+    }
 }
 
 void r3d_draw_model(R3dTarget *t, const Model *m, const R3dXform *x,

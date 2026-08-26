@@ -84,6 +84,27 @@ Fourteen bytes per triangle, and the adjacency is symmetric — triangle 1 lists
 as a neighbour and triangle 2 lists 1. `-1` means no neighbour, i.e. a wall.
 `GROUNDHEIGHT` in the character table (§3.1) is this height.
 
+Phase 4 needed the mesh precisely rather than approximately, and reading it as
+the engine does settles three things about it, over all 5,342 triangles of the
+48 sets:
+
+* **Neighbour slot *k* is the edge (v[k], v[k+1])**, in all 10,876 links, and
+  every one of them is symmetric. There is no exception anywhere on the disc,
+  which is what lets the triangle search step directly from an edge to the
+  triangle beyond it.
+* **The winding is not consistent** — 2,729 triangles turn one way and 2,613
+  the other. So "is the point inside" cannot be a sign test against a fixed
+  winding; it has to be the weaker "no two edges disagree".
+* **19 of the 48 meshes come in more than one piece.** A search across the
+  adjacency cannot reach every triangle from every other one, and code that
+  assumes it can will hang or lie.
+
+**The height word is the world y of the floor, at 1:1.** Reconstructing what
+the backdrops actually draw and comparing (see
+[13-viewer.md](13-viewer.md) 13.6) fits D1's storeys as
+`floor = 0.962 * height + 36.7` with r = 0.94, over heights from 1 to 2,473 —
+at the top of which the drawn floor comes back as 2,468.
+
 The triangle list ends exactly where `ScriptOffset` begins, to within 8-byte
 alignment, in **all 48 sets** — the self-consistency check session 3 ran on set
 0, now confirmed across the track.

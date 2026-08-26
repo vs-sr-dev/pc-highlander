@@ -3,19 +3,29 @@
 A native PC reimplementation of **Highlander: The Last of the MacLeods**
 (Lore Design Ltd. / Atari Corp., Jaguar CD, 1995).
 
-> **Status: phase 3 complete — there is something on screen.** `src/` builds
+> **Status: phase 3 complete, phase 4 under way.** `src/` builds
 > `hlview`: an SDL3 window over a 320x200 RGB16 framebuffer that opens any of
 > the 672 backdrops by name, shows its Z-buffer, spins a model read straight
 > off the disc, and **composites that model into the scene, depth-tested against
-> the backdrop's own Z half.** A wine bottle standing on a tent floor keeps all
-> 74 of its pixels in the open, 33 of 74 with the tent pole across it, and none
-> at all behind the pole.
+> the backdrop's own Z half.** A wine bottle standing on a tent floor keeps
+> every one of its pixels in the open, 34 of 75 with the tent pole across it,
+> and none at all behind the pole.
 >
 > Drawing settled the three conventions no amount of reading could
 > ([docs/13-viewer.md](docs/13-viewer.md)): the camera footer's matrix is **row
 > major over a y-up world**, the Z-buffer stores **`65536 - |z|`** so nearer is
 > larger, and the item models are stored on their side with the **world records
 > standing them up** at elevation 192 on the game's 256-step circle.
+>
+> **Phase 4 has started.** The engine loads a set off track 3 — views, doorways,
+> events and the floor mesh — and draws that mesh over the backdrop, which is
+> the debugging view the rest of the phase gets built against. The triangle
+> search is `FINDTRI`'s, a search over a list rather than a walk down one path,
+> and the difference matters: greedy fails on 258 of the disc's 5,342 triangles,
+> the list search on none of them. Inverting a backdrop's Z-buffer back into
+> world coordinates ([tools/scene/backproj.py](tools/scene/backproj.py)) also
+> closed phase 3's open question — the collision height *is* the floor's world
+> y, at 1:1, and what looked like objects sinking is relief in the art.
 >
 > Behind that, phase 2: all 672 backdrops and their Z-buffers, the models — the
 > disc's wine bottle is facet-for-facet the `MERLOT79.INC` of the 1995 source —
@@ -85,7 +95,7 @@ Z-buffer**, plus **Cinepak** full-motion video and **Red Book** CD audio.
 | [docs/10-set-track.md](docs/10-set-track.md) | The set track: scene tables, doorways, collision, events |
 | [docs/11-script-vm.md](docs/11-script-vm.md) | The script VM: encoding, opcodes, and what the scripts do |
 | [docs/12-world-and-sheets.md](docs/12-world-and-sheets.md) | The world-state table and the character sheets |
-| [docs/13-viewer.md](docs/13-viewer.md) | The viewer: the view transform, the Z-buffer convention, the rasteriser |
+| [docs/13-viewer.md](docs/13-viewer.md) | The viewer: the view transform, the Z-buffer convention, the rasteriser, the floor |
 | [docs/sessions/](docs/sessions/) | Work log, one note per session |
 
 ## The engine
@@ -96,6 +106,8 @@ build/hlview --scene CA_CAM03           # a backdrop, by name
 build/hlview --scene CA_CAM03 --depth   # its Z-buffer
 build/hlview --model boot:6 --spin      # the wine bottle, turning
 build/hlview --scene TENT6_CAM01 --model boot:6 --object '#190'
+build/hlview --scene DUN1_CAM00 --mesh  # the collision mesh over the art
+build/hlview --check-mesh               # the triangle search, checked
 ```
 
 More in [src/README.md](src/README.md).
@@ -113,6 +125,10 @@ Everything below works on those files.
 ```
 # all 672 backdrops and Z-buffers as PNG
 python tools/scene/scenex.py DIR/track04_pict.bin --boot DIR/track02_00004000.bin --out assets/scenes --depth
+
+# a backdrop's Z-buffer, inverted back into world coordinates
+python tools/scene/backproj.py DIR/track04_pict.bin --boot DIR/track02_00004000.bin --check DUN1
+python tools/scene/backproj.py DIR/track04_pict.bin --boot DIR/track02_00004000.bin --ground D1
 
 # the item text, English / French / German
 python tools/text/textx.py DIR/track02_00004000.bin --format tsv

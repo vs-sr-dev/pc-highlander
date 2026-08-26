@@ -78,6 +78,16 @@ void r3d_place(R3dXform *x, const SceneCam *cam,
 void r3d_draw_model(R3dTarget *t, const Model *m, const R3dXform *x,
                     const R3dOpts *o);
 
+/* One line between two view-space points, near-clipped, depth-interpolated and
+ * depth-tested like everything else - which is what makes the collision mesh
+ * drawn over a backdrop a check and not just a picture: it has to disappear
+ * behind the scenery the backdrop draws in front of it. */
+void r3d_line(R3dTarget *t, const int32_t a[3], const int32_t b[3],
+              uint16_t colour, int depth_test);
+
+/* World point -> view space, using a transform built by r3d_place. */
+void r3d_to_view(const R3dXform *x, const int32_t w[3], int32_t out[3]);
+
 /* Projection of one view-space point.  Returns 0 if it is behind the near
  * clamp.  sy comes back as a scanline, counted from the top. */
 int  r3d_project(const int32_t v[3], int *sx, int *sy);

@@ -4,6 +4,8 @@ Engine code, phase 3 onwards.
 main.c        hlview: the viewer, and for now the whole front end
 game/         scene.c  a backdrop slot: XOR key, colour, depth, camera footer
               model.c  the SKELSKIN polyhedron format, read off the disc
+              set.c    one environment: views, doorways, events, and the floor
+                       mesh, with the triangle search FINDTRI.GAS describes
 r3d/          r3d.c    projection, matrices, scanline fill, Z-buffer
 platform/     window.c the only file that knows SDL exists
 util/         io.c     whole-file reads and big-endian accessors
@@ -19,6 +21,8 @@ build/hlview --scene CA_CAM03                      a backdrop
 build/hlview --scene CA_CAM03 --depth              its Z-buffer as grey
 build/hlview --model boot:6 --spin                 the wine bottle, turning
 build/hlview --scene TENT6_CAM01 --model boot:6 --object '#190'
+build/hlview --scene DUN1_CAM00 --mesh             the collision mesh, over the art
+build/hlview --check-mesh                          the triangle search, checked
 build/hlview --help
 ```
 

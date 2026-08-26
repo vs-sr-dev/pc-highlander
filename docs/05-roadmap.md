@@ -121,17 +121,37 @@ sy =  99 + (y * 246) / max(|z|, 40)      ; 246 = 300 * ASPECT, ASPECT = $347A / 
 row = 199 - sy
 ```
 
-One thing the viewer turned up and could not close: an object placed at the
-collision mesh's height sinks into the ground the backdrop draws, by 50 to 130
-units depending on the set (13.6). Phase 4 has to answer it.
+One thing the viewer turned up and could not close at the time: an object placed
+at the collision mesh's height sinks into the ground the backdrop draws. Phase 4
+opened by answering it — the mesh is a flat plane through the bottom of ground
+the art models with relief, and the height word is the floor's world y at 1:1
+(13.6).
 
-### Phase 4 — The world exists
+### Phase 4 — The world exists — **started**
 Port the data structures (WST, ACT, CIT, DDA, character sheets), set loading,
 the collision mesh and triangle search (`FINDTRI`), and character movement with
 ground height and stair handling (`SMOOTH.TXT`). Fixed cameras that switch when
 event lines are crossed.
 **Success criterion:** you can walk around `DUN1` and the camera cuts where it
 should.
+
+Done so far:
+
+* **Set loading.** `src/game/set.c` reads a set off track 3 — views, doorways,
+  events and the floor mesh — and agrees with `setx.py` set for set. The viewer
+  draws the mesh over the backdrop with `--mesh`, which is the debugging view
+  the rest of this phase will be built against.
+* **The triangle search.** `FINDTRI.GAS` is a search over a list rather than a
+  walk down one path, and the difference is not academic: greedy fails on 258 of
+  the 5,342 triangles on the disc, the list search on none.
+  `hlview --check-mesh` is the regression test — 5,342 searches from a connected
+  start, 0 wrong, 0 falling back to a full scan, 5.1 triangles examined on
+  average ([13-viewer.md](13-viewer.md) 13.8).
+* **Ground height, settled.** The collision triangle's height word is the world
+  y of the floor at 1:1, measured against what the backdrops actually draw
+  (13.6). The question phase 3 left open — objects sinking into the ground — is
+  answered: it is relief in the art that the flat mesh approximates, not a
+  format we were reading wrong.
 
 ### Phase 5 — The game moves
 Animation with tweening, character-to-character collision, combat (`PCOL.TXT`),

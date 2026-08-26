@@ -19,6 +19,7 @@
 #include "util/json.h"
 #include "game/scene.h"
 #include "game/model.h"
+#include "game/set.h"
 #include "r3d/r3d.h"
 #include "platform/window.h"
 
@@ -30,19 +31,21 @@ typedef struct {
     const char *object;
     const char *shot;
     int   no_window, depth, spin, wire, shade, scale, frames;
+    int   mesh, no_ground;
     int   have_pos, pos[3];
     int   have_face, face[3];
     R3dCull cull;
     int   list_scenes, list_models, list_objects;
 } Args;
 
-static char path_pict[512], path_boot[512], path_t5[512];
+static char path_pict[512], path_boot[512], path_t5[512], path_set[512];
 
 static void paths(const char *dir)
 {
     snprintf(path_pict, sizeof path_pict, "%s/track04_pict.bin", dir);
     snprintf(path_boot, sizeof path_boot, "%s/track02_00004000.bin", dir);
     snprintf(path_t5,   sizeof path_t5,   "%s/track05_data.bin", dir);
+    snprintf(path_set,  sizeof path_set,  "%s/track03_data.bin", dir);
 }
 
 /* ---- the manifest ------------------------------------------------- */
@@ -203,6 +206,85 @@ static int models_open(ModelSet *ms, const char *spec, int *index)
     return ms->count > 0;
 }
 
+/* ---- the floor, checked -------------------------------------------- */
+
+/* set_find_tri searches the adjacency the way FINDTRI.GAS does; set_locate
+ * scans every triangle.  They must agree, so run the search against the scan
+ * for every triangle of every set, from two kinds of start: an arbitrary one,
+ * and one five triangles away, which is the only case movement is ever in.
+ * Report how often the search gave up into a full scan as well - a search that
+ * always gave up would "agree" with the scan every time and prove nothing. */
+static int check_mesh(void)
+{
+    int total = 0, wrong = 0, unreachable = 0;
+    int fell_back = 0, walked_ok = 0; long walk_steps = 0;
+    int connected = 0, connected_wrong = 0, connected_fell_back = 0;
+    long connected_steps = 0;
+    for (int i = 0; i < SET_COUNT; i++) {
+        Set s;
+        if (!set_load(&s, path_set, i) || s.ntris == 0)
+            continue;
+        int bad = 0;
+        for (int t = 0; t < s.ntris; t++) {
+            /* the centroid, which is inside triangle t by construction */
+            const SetTri *tr = &s.tri[t];
+            int64_t cx = 0, cz = 0;
+            for (int k = 0; k < 3; k++) {
+                cx += s.vert[tr->vert[k]].x;
+                cz += s.vert[tr->vert[k]].z;
+            }
+            int32_t x = (int32_t)(cx / 3), z = (int32_t)(cz / 3);
+            int from = (t * 7 + 3) % s.ntris;       /* start somewhere else */
+            int steps = -1;
+            int walked = set_walk(&s, x, z, from, &steps);
+            if (steps < 0) fell_back++; else { walk_steps += steps; walked_ok++; }
+            int scanned = set_locate(&s, x, z);
+            total++;
+            if (scanned < 0)
+                unreachable++;
+            else if (!set_contains(&s, walked, x, z)) {
+                /* The mesh overlaps itself here and there, so the walk landing
+                 * on a different index than the scan is fine; landing on a
+                 * triangle that does not cover the point is not. */
+                wrong++;
+                bad++;
+                if (bad <= 2)
+                    printf("  set %2d tri %3d: centroid (%d,%d) -> walk %d, scan %d\n",
+                           i, t, x, z, walked, scanned);
+            }
+
+            /* The case movement is actually in: the character was five
+             * triangles away a moment ago, so the start is connected to the
+             * destination and the walk must not need the scan at all. */
+            int near_start = set_step_away(&s, t, 5);
+            int near_steps = -1;
+            int near = set_walk(&s, x, z, near_start, &near_steps);
+            connected++;
+            if (near_steps < 0)
+                connected_fell_back++;
+            else
+                connected_steps += near_steps;
+            if (!set_contains(&s, near, x, z))
+                connected_wrong++;
+        }
+        if (bad)
+            printf("  set %2d: %d of %d centroids disagree\n", i, bad, s.ntris);
+        set_free(&s);
+    }
+    printf("mesh walk vs scan: %d triangles, %d disagreements, "
+           "%d centroids the scan itself could not place\n",
+           total, wrong, unreachable);
+    printf("  from an arbitrary start: %d found across the adjacency, %.1f "
+           "triangles examined on average, %d gave up into a full scan\n",
+           walked_ok, walked_ok ? (double)walk_steps / walked_ok : 0.0, fell_back);
+    printf("  from five triangles away, which is where movement always starts: "
+           "%d searches, %d wrong, %d gave up, %.1f triangles examined on average\n",
+           connected, connected_wrong, connected_fell_back,
+           connected > connected_fell_back
+               ? (double)connected_steps / (connected - connected_fell_back) : 0.0);
+    return wrong == 0 && connected_wrong == 0;
+}
+
 /* ---- main --------------------------------------------------------- */
 
 static void usage(void)
@@ -214,6 +296,8 @@ static void usage(void)
 "  --manifest FILE   default assets/manifest.json\n"
 "  --scene NAME      a scene by name (CA_CAM03) or #index\n"
 "  --depth           show the scene's Z half as grey instead of the picture\n"
+"  --mesh            draw the set's collision mesh over the scene\n"
+"  --no-ground       leave the object at y = 0 instead of on the floor\n"
 "  --model SRC:N     boot:N for the 19 item models, track5:N for the 220\n"
 "  --object NAME     place the model at a world record (CA_WINE, #5)\n"
 "  --pos X,Y,Z       place it explicitly instead\n"
@@ -237,7 +321,8 @@ static int parse_triple(const char *s, int *out)
 int main(int argc, char **argv)
 {
     Args a = { "assets/tracks", "assets/manifest.json", NULL, NULL, NULL, NULL,
-               0, 0, 0, 0, 1, 3, 0, 0, {0,0,0}, 0, {0,0,0}, R3D_CULL_BACK, 0, 0, 0 };
+               0, 0, 0, 0, 1, 3, 0, 0, 0, 0, {0,0,0}, 0, {0,0,0},
+               R3D_CULL_BACK, 0, 0, 0 };
 
     for (int i = 1; i < argc; i++) {
         const char *v = i + 1 < argc ? argv[i + 1] : NULL;
@@ -257,6 +342,8 @@ int main(int argc, char **argv)
                      !strcmp(m, "front") ? R3D_CULL_FRONT : R3D_CULL_BACK;
         }
         else if (!strcmp(argv[i], "--depth"))     a.depth = 1;
+        else if (!strcmp(argv[i], "--mesh"))      a.mesh = 1;
+        else if (!strcmp(argv[i], "--no-ground")) a.no_ground = 1;
         else if (!strcmp(argv[i], "--spin"))      a.spin = 1;
         else if (!strcmp(argv[i], "--wire"))      a.wire = 1;
         else if (!strcmp(argv[i], "--flat"))      a.shade = 0;
@@ -264,6 +351,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--list-scenes"))  a.list_scenes = 1;
         else if (!strcmp(argv[i], "--list-models"))  a.list_models = 1;
         else if (!strcmp(argv[i], "--list-objects")) a.list_objects = 1;
+        else if (!strcmp(argv[i], "--check-mesh")) { paths(a.tracks); return !check_mesh(); }
         else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) { usage(); return 0; }
         else { usage(); return argv[i][0] == '-' ? 1 : 0; }
     }
@@ -371,6 +459,39 @@ int main(int argc, char **argv)
                scene.cam.pos[0], scene.cam.pos[1], scene.cam.pos[2]);
     }
 
+    /* The set the view belongs to: its floor is what puts an object at the
+     * right height, and its mesh is the overlay --mesh draws. */
+    static Set set;
+    int have_set = 0;
+    if (have_scene) {
+        int si = set_of_scene(path_set, scene.cam.id);
+        if (si >= 0 && set_load(&set, path_set, si)) {
+            have_set = 1;
+            printf("set %d  %d views  %d doorways  %d events  "
+                   "%d floor triangles over %d vertices\n",
+                   si, set.nscenes, set.nentries, set.nevents,
+                   set.ntris, set.nverts);
+        } else {
+            fprintf(stderr, "no set owns scene id %d\n", scene.cam.id);
+        }
+    }
+
+    /* Put the object on the floor.  A world record's Ypos is zero in all 197
+     * of them: the height a character stands at is GROUNDHEIGHT, the height
+     * word of the collision triangle it is on, so y here reads as a height
+     * above the floor rather than an absolute. */
+    if (have_set && !a.no_ground) {
+        int32_t h = 0;
+        int tri = set_ground(&set, pos[0], pos[2], -1, &h);
+        if (tri >= 0) {
+            printf("floor: triangle %d, height %d%s\n", tri, h,
+                   pos[1] ? " (plus the y given)" : "");
+            pos[1] += h;
+        } else {
+            printf("floor: (%d,%d) is off the collision mesh\n", pos[0], pos[2]);
+        }
+    }
+
     /* Without a scene the viewer is a turntable: the camera sits at the origin
      * looking down -z and the model is pushed back far enough to fit. */
     SceneCam solo;
@@ -417,6 +538,31 @@ int main(int argc, char **argv)
               for (int i = 0; i < R3D_W * R3D_H; i++) target.depth[i] = scene_z(scene.depth[i]); }
         else
             r3d_clear(&target, 0x18C6, 1 << 20);
+
+        if (a.mesh && have_set && have_scene) {
+            /* The floor, drawn where the game thinks it is.  Not depth-tested:
+             * the collision plane sits a little *under* the ground the backdrop
+             * draws - 12 units in DUN1, about 70 in TENT6 - so testing it
+             * against the backdrop hides the whole mesh.  That is the measured
+             * offset of docs/13-viewer.md 13.6, not a bug in the overlay. */
+            int32_t id[9];
+            R3dXform x;
+            int32_t origin[3] = { 0, 0, 0 };
+            r3d_identity(id);
+            r3d_place(&x, &scene.cam, id, origin);
+            for (int i = 0; i < set.ntris; i++) {
+                const SetTri *tr = &set.tri[i];
+                int32_t v[3][3];
+                for (int k = 0; k < 3; k++) {
+                    int32_t w[3] = { set.vert[tr->vert[k]].x, tr->height,
+                                     set.vert[tr->vert[k]].z };
+                    r3d_to_view(&x, w, v[k]);
+                }
+                for (int k = 0; k < 3; k++)
+                    r3d_line(&target, v[k], v[(k + 1) % 3],
+                             tr->adj[k] < 0 ? 0xF800 : 0x003F, 0);   /* wall red, open edge green */
+            }
+        }
 
         if (model) {
             int32_t rot[9], objpos[3] = { pos[0], pos[1], pos[2] };
@@ -508,6 +654,8 @@ int main(int argc, char **argv)
 
     if (windowed)
         window_close();
+    if (have_set)
+        set_free(&set);
     if (ms.list)
         model_free_all(ms.list, ms.count);
     io_free(&ms.file);

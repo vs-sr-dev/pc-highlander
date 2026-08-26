@@ -21,7 +21,7 @@ CFLAGS  += $(shell pkg-config --cflags sdl3)
 LDLIBS  += $(shell pkg-config --libs sdl3) -lm -mconsole
 
 SRC := src/main.c src/util/io.c src/util/json.c src/game/scene.c \
-       src/game/model.c src/r3d/r3d.c src/platform/window.c
+       src/game/model.c src/game/set.c src/r3d/r3d.c src/platform/window.c
 OBJ := $(SRC:src/%.c=build/%.o)
 BIN := build/hlview
 
