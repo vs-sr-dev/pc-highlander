@@ -125,6 +125,8 @@ typedef struct {
     long     overrun;           /* processes that hit the command budget    */
     long     padding;           /* processes that ran into slot padding     */
     long     opcount[VM_LASTOP];
+    int      trih_tri;          /* the last floor a script moved,  */
+    int32_t  trih_height;       /* and what it moved it to         */
 } Vm;
 
 /* `world` is the world table as it comes off the disc; the machine takes its

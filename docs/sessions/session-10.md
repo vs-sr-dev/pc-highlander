@@ -183,6 +183,49 @@ lifted out of `main.c`, which is the next thing rather than a late-evening one.
 
 → [11-script-vm.md](../11-script-vm.md) 11.9
 
+## 7. And the loop is a loop
+
+`--drive` was a branch inside a viewer, and the machine had nowhere to run.
+`src/game/game.c` is one game frame, in the order the original runs it:
+
+```
+1  the script machine, one command per process until it yields
+2  the events it posted, which the host acts on and clears
+3  ControlCode and ActionCode over every active character
+4  the set's own event lines, which cut the camera and open the doors
+```
+
+Step 2 is the whole of how a script reaches the outside. The machine writes
+`EVENT_TYPE + 1` into `scriptevent` and will not run another command until it
+is cleared, so `camera`, `cinepak`, `redbook` and `sample` all wait on the same
+handshake — which means a port that cannot play a film yet does not have to
+pretend it can: it takes the request, clears the event, and the script carries
+on. The `eventmask` a script writes now gates step 4 too, which is exactly what
+it is for.
+
+**And a puzzle runs.**
+
+```
+build/hlview --scene SE_CAM05 --char 0 --drive
+
+frame    1: 3 script processes running
+frame    2: 6 script processes running
+frame    3: a script moved the floor: triangle 59 to 0 (4 written)
+```
+
+Three processes on the first frame are MAINSCRIPT's; the set's own start a
+frame later, which is what `allnew` arranges by leaving behind a set number
+that cannot match. Then the sewers' sluice runs: `SE`'s script tests which view
+you are under and writes four collision triangle heights, one pair up to 885
+and one pair down to 0, so the walkway you can stand on changes with the
+camera. That is a puzzle from the disc, on the disc's own data, moving the
+floor the character is standing on.
+
+`main.c` keeps the viewer — `--play`, `--walk`, `--events`, the models and the
+turntable — and what it does for `--drive` now is load a backdrop and draw.
+
+→ [11-script-vm.md](../11-script-vm.md) 11.10
+
 ---
 
 ## Still open
@@ -194,21 +237,19 @@ lifted out of `main.c`, which is the next thing rather than a late-evening one.
   follower's.
 * **The 15th AI command**, which `LOGICS.INC` does not number.
 * **The low byte of `cshBehaviour`** on the item and weapon sheets.
-* **The machine in the live loop.** The VM runs every script on the disc under
-  `--check-script`, but `--drive` does not run one yet: the game loop is still
-  inside `main.c` and wants lifting out into a module of its own first.
+* **The films, and everything else a script asks for.** `cinepak`, `redbook`
+  and `sample` post their event and the loop clears it without playing
+  anything. That is phase 6 and phase 7.
 * Unchanged: track 9 and `HIRESDATA`; `ZMODELT`'s sense; the non-uniform `face`
   elevation on the items; the three unreferenced films; the 125 unnamed world
   records; the seventeen unnamed GPU modules; the `SLP` payload; `gvar[0..2]`.
 
 ## TODO for session 11
 
-1. **The game loop, out of `main.c`.** Everything is now in place for a set to
-   be lived in — the floor, the doorways, two characters, the machine that
-   watches them — and the thing in the way is that `--drive` is a branch inside
-   a viewer. A `game.c` owning the set, the ACT table and the VM turns
-   `--check-script`'s machine into a running one, and is what lets a script
-   assign Ramirez his sheet, which is why world record 1 carries none.
+1. **The films.** Every script that matters ends in one, the container and the
+   codec are both standard, and 32 of the 36 are already placed by their block
+   offsets (11.7). The loop already asks for them by block and throws the
+   request away.
 2. **Combat, or at least its movement half.** `AIAttackCode` is ported down to
    the point where it needs `actStatus`, the hit frames and the opponent's own
    joypad — which is `PCOL.TXT`, and phase 5.

@@ -21,6 +21,9 @@ game/         scene.c  a backdrop slot: XOR key, colour, depth, camera footer
                        wears, and what he does when nobody drives him
               act.c    the active character table: one record per character in
                        the world, and AICTRL.GAS's two master loops over it
+              game.c   the loop: the script machine, the events it posts, the
+                       two master loops, and the event lines on the floor -
+                       everything one game frame is, in the order it runs
 script/       vm.c     SCRIPT.GAS's interpreter: 83 opcodes, the process
                        table, and the world the commands reach into
 r3d/          r3d.c    projection, matrices, scanline fill, Z-buffer

@@ -892,8 +892,11 @@ static int step(Vm *vm, int slot)
         return 1;
 
     case 74:                                    /* triangle_height */
-        if (vm->set && (int)uoper < vm->set->ntris)
+        if (vm->set && (int)uoper < vm->set->ntris) {
             vm->set->tri[uoper].height = (int16_t)ex[0];
+            vm->trih_tri    = (int)uoper;
+            vm->trih_height = (int32_t)ex[0];
+        }
         return 1;
 
     case 75:                                    /* testuse */

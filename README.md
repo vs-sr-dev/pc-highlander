@@ -108,6 +108,15 @@ A native PC reimplementation of **Highlander: The Last of the MacLeods**
 > command is slot padding here and `not r0` there, which two sets would spin the
 > GPU on for ever.
 >
+> **And the loop is a loop.** `src/game/game.c` is one game frame in the order
+> the original runs it: the script machine, the events it posted, the two master
+> loops over every active character, the event lines on the floor. `--drive` is
+> that loop rather than a branch inside a viewer, so a script now runs while you
+> walk — and in the sewers, `SE`'s own script tests which camera you are under
+> and writes four collision triangle heights, one pair up and one pair down, so
+> **the walkway moves under the character**. A puzzle off the disc, on the
+> disc's own data.
+>
 > Two smaller things the disc gave up on the way. The camera footer's long at
 > +32 is not the constant session 3 took it for: it is the **set's own block on
 > track 3**, which names the set a view belongs to outright, and it checks out

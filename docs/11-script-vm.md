@@ -395,3 +395,48 @@ Forty-six of 83 is against the whole machine; the disc's scripts contain 49
 distinct opcodes, and the three of those never reached — `kill`, `actread` and
 `poke` — sit behind branches this stimulus does not open. The rest of the 83
 are opcodes no shipped script uses at all.
+
+## 11.10 In the loop
+
+`src/game/game.c` is one game frame, in the order the original runs it:
+
+```
+1  the script machine, one command per process until it yields
+2  the events it posted, which the host acts on and clears
+3  ControlCode and ActionCode over every active character
+4  the set's own event lines, which cut the camera and open the doors
+```
+
+Step 2 is the whole of how a script reaches the outside world. The machine
+writes `EVENT_TYPE + 1` into `scriptevent` and **will not run another command
+until it is cleared**, so `camera`, `cinepak`, `redbook`, `sample` and
+`restore` all wait on the same handshake — which is why a port that cannot yet
+play a film does not have to pretend: it takes the request, clears the event,
+and the script carries on.
+
+The `eventmask` a script writes now gates step 4 as well, which is what it is
+for: `eventmask $0000` turns the set's own event lines off for the length of a
+cutscene and `eventmask $FFFF` puts them back.
+
+### What it looks like from the outside
+
+```
+build/hlview --scene SE_CAM05 --char 0 --drive
+```
+
+```
+frame    1: 3 script processes running
+frame    2: 6 script processes running
+frame    3: a script moved the floor: triangle 59 to 0 (4 written)
+```
+
+Three processes on the first frame are MAINSCRIPT's — the one that watches the
+player's `Life` and the two cheat codes. The three more on the second are the
+set's own, because the set script starts a frame after the resident one, which
+is what `allnew` arranges by leaving behind a set number that cannot match.
+
+And then the sewers' sluice runs. `SE`'s script tests which view you are
+looking at and writes four collision triangle heights — one pair up to 885, one
+pair down to 0 — so the walkway you can stand on changes with the camera. That
+is a puzzle from the disc, on the disc's own data, moving the floor the
+character is standing on.

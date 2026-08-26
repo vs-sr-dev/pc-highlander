@@ -194,9 +194,14 @@ runs them: 585,226 commands, nothing past the dispatch table, no process
 overrunning its budget, and every `camera` naming a view its set lists
 ([11-script-vm.md](11-script-vm.md) 11.9).
 
-Still to do here: wire the machine into the live loop rather than the check —
-which wants the game loop lifted out of `main.c` first — and then the films,
-the menu and the state that survives a reset.
+And **the loop it runs in**: `src/game/game.c` is one game frame in the order
+the original runs it — the machine, the events it posts, the two master loops
+over the active characters, the event lines on the floor. `--drive` is that
+loop now rather than a branch inside the viewer, and the sewers' sluice moves
+the collision mesh under the player because `SE`'s own script says so
+([11-script-vm.md](11-script-vm.md) 11.10).
+
+Still to do here: the films, the menu, and the state that survives a `reset`.
 
 ### Phase 7 — The game speaks
 16-voice PCM mixer, Red Book playback from the image's audio track, synchronised
