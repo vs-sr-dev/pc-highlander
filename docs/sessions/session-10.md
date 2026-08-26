@@ -246,14 +246,73 @@ turntable — and what it does for `--drive` now is load a backdrop and draw.
 
 ## TODO for session 11
 
-1. **The films.** Every script that matters ends in one, the container and the
-   codec are both standard, and 32 of the 36 are already placed by their block
-   offsets (11.7). The loop already asks for them by block and throws the
-   request away.
-2. **Combat, or at least its movement half.** `AIAttackCode` is ported down to
-   the point where it needs `actStatus`, the hit frames and the opponent's own
-   joypad — which is `PCOL.TXT`, and phase 5.
-3. **The logic tables**, still a code search: find what writes `misc[0]`.
+### 1. The films — the main one
 
-And still worth an hour: **the frame comparator** — render a scene, run the same
-scene under an emulator, diff. Two sessions have now wanted it.
+Every script that matters ends in one. `game.want_film` already carries the CD
+block a script asked for and the loop already throws it away, so the hole is
+exactly film-shaped and everything around it is in place:
+
+* **The container is fully read** (9.2). `FILM` / `FDSC` / `CTAB`, chunk offsets
+  relative to the film start, a 64-byte sync pad per chunk, then `STAB` with
+  sixteen bytes per sample. The player seeks to a block and scans forward for
+  the long `'1111'`, which is `CINEPAK.S`'s own `sync_header`.
+* **The frame timing is known**: 12 fps throughout, frames 50 ticks apart at
+  `CTAB`'s rate of 600.
+* **The audio is read and verified** (9.3): signed 8-bit mono at 22,252 Hz, in
+  16,696-byte blocks, reassembled in `STAB` order and checked by the step size
+  across the joins. It is phase 7's to *play*, but nothing about it needs
+  finding.
+* **32 of the 36 films are placed** by their block offsets, against every
+  `cinepak` operand on the disc (11.7).
+* `tools/cinepak/filmls.py` and `filmwav.py` are the reference readers, and
+  `assets/films.tsv` is the inventory.
+
+So what is actually missing is **one decoder**. The video is `cvid` — plain
+Cinepak, 320x240, and §5.2 already says not to transcribe the hand-written one:
+the container is ours to read and the codec is a standard, published one.
+Codebooks, 4x4 blocks, V1 and V4 vectors, inter and intra frames.
+
+The shape it wants:
+
+```
+src/media/film.c     the container: seek to a block, find '1111', walk the
+                     chunks, hand out video frames and audio blocks
+src/media/cinepak.c  the cvid decoder, into an RGB16 surface
+```
+
+and then the loop's own handshake does the rest, because it is already the
+original's: a script posts `EVENT_TYPE_CINEPAK + 1` and does not run another
+command until it is cleared, so "play the film, then clear the event" is the
+whole of the integration.
+
+**Success criteria, in the shape this project uses.** Not "it looks right":
+
+* `hlview --film 19` plays it in the window at 12 fps.
+* `hlview --check-film` decodes **every frame of all 36 films** and reports
+  zero decoder errors, zero chunks whose `STAB` does not account for their
+  bytes, and the frame count per film against what `filmls.py` counts — two
+  readers, one of them Python and written months earlier, agreeing.
+* One frame of one film decoded in C and in Python, compared pixel for pixel.
+
+### 2. Combat, or at least its movement half
+
+`AIAttackCode` is ported down to the point where it needs `actStatus`, the hit
+frames and the opponent's own joypad — which is `PCOL.TXT`, and phase 5. The
+three sheets with `aiAttackPlayer` and the one with `aiShootPlayer` are waiting
+for it, and `ACT_CREATED` already means a hunter can be put in a set.
+
+### 3. The logic tables
+
+Still a code search rather than a disc search: find what writes `misc[0]` of a
+character sheet. `CSHCODE.GAS` is the file in the dump whose name suggests it.
+Until then both joypad-to-animation tables are ours.
+
+### Smaller, and still worth an hour each
+
+* **The frame comparator** — render a scene, run the same scene under an
+  emulator, diff. Three sessions have now wanted it, and session 9 spent a day
+  on a number one frame diff would have settled.
+* **The 15th AI command**, which `LOGICS.INC` does not number and one sheet
+  uses.
+* **The low byte of `cshBehaviour`** — 10, 20, 30, 40 or 250, on the item and
+  weapon sheets only.

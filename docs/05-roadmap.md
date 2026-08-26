@@ -201,7 +201,12 @@ loop now rather than a branch inside the viewer, and the sewers' sluice moves
 the collision mesh under the player because `SE`'s own script says so
 ([11-script-vm.md](11-script-vm.md) 11.10).
 
-Still to do here: the films, the menu, and the state that survives a `reset`.
+Next here: **the films.** The container is fully read (9.2) and the audio
+reassembly is verified (9.3); what is missing is one `cvid` decoder, which 5.2
+already says to write rather than transcribe. The loop's handshake is the
+integration - a script posts `EVENT_TYPE_CINEPAK + 1` and runs no further
+command until it is cleared - so "play it, then clear the event" is all of it.
+After that: the menu, and the state that survives a `reset`.
 
 ### Phase 7 — The game speaks
 16-voice PCM mixer, Red Book playback from the image's audio track, synchronised
