@@ -37,6 +37,24 @@ typedef struct {
     int      used;
 } WorldRec;
 
+/* And the byte offsets inside one of those records, which is how the engine
+ * and the scripts both address it - LOGICS.INC's `wstRecord`. */
+#define WS_SET      0
+#define WS_RADIUS   2
+#define WS_SHEET    4
+#define WS_PARENT   8
+#define WS_XPOS     12
+#define WS_YPOS     16
+#define WS_ZPOS     20
+#define WS_XFACE    24
+#define WS_YFACE    25
+#define WS_ZFACE    26
+#define WS_SANITY   27
+#define WS_PERSON   28
+#define WS_STR      29
+#define WS_LIFE     30
+#define WS_FLAGS    31
+
 #define WST_INANIMATE   (1u << 1)
 #define WST_AMMO        (1u << 3)
 #define WST_WEAPON      (1u << 4)

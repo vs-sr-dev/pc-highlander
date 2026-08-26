@@ -53,6 +53,7 @@
 #define AI_FOLLOW_RANGE    (1000/4*5/2)         /*  2.50 m */
 #define AI_SENTRY_RANGE    (1000/4*20)          /* 20.00 m */
 #define AI_MELEE_RANGE     (1000/4*2)           /*  2.00 m */
+#define AI_MISSILE_RANGE   (1000/4*5)           /*  5.00 m */
 
 typedef struct {
     int      command;           /* actAICommand                             */
@@ -72,12 +73,27 @@ void ai_init(Ai *ai, int behaviour);
  * convention the walk already uses. */
 uint8_t ai_angle(int32_t dx, int32_t dz);
 
-/* `ComputerControl`: the joypad this character presses this frame.  `self` is
- * him, `player` is who aiFollowPlayer and friends aim at, and `person` is the
- * target of the Person commands - either may be NULL, in which case the
- * commands that need one do nothing. */
-uint32_t ai_control(Ai *ai, const Actor *self, const Actor *player,
-                    const Actor *person);
+/* Everything `ComputerControl` can see besides the character himself.  Most
+ * of it is for the attack machine: closing to melee range needs only the
+ * target's position, but *fighting* needs what he is pressing this frame, how
+ * he is standing, and the engine's frame counter, which is where the original
+ * gets its rhythm from instead of a random number. */
+typedef struct {
+    const Actor *player;        /* who the Player commands aim at, or NULL  */
+    const Actor *person;        /* the target of the Person commands        */
+    uint32_t     target_pad;    /* that target's own joypad, this frame     */
+    uint32_t     prev_pad;      /* what this character pressed last frame   */
+    uint8_t      stance;        /* citStance: FSAPlay and FSATurn gate it   */
+    uint8_t      target_face;   /* the target's own facing                  */
+    uint16_t    *status;        /* actStatus, which the machine advances    */
+} AiWorld;
+
+/* `ComputerControl`: the joypad this character presses this frame. */
+uint32_t ai_control(Ai *ai, const Actor *self, const AiWorld *w);
+
+/* Does this command aim at `person` rather than at the player?  The caller
+ * has the character table and resolves the target; this says which one. */
+int  ai_person_command(int command);
 
 const char *ai_command_name(int command);
 

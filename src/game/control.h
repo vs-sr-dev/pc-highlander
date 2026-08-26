@@ -80,6 +80,9 @@
 #define ST_BACK     2
 #define ST_WALK     3
 #define ST_JOG      4
+#define ST_HIT      5           /* ours: reeling from a blow                */
+#define ST_DEAD     6           /* ours: on the floor                       */
+#define ST_COUNT    8
 
 /* One entry of a logic tuple: an animation, and the stance to go to. */
 typedef struct { int16_t anim; uint8_t stance; } LogicEntry;

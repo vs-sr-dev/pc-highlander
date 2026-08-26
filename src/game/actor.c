@@ -362,6 +362,9 @@ void actor_step(Actor *a, const Set *s, const Anim *an, int frate)
 {
     if (!an || an->frames <= 0)
         return;
+    int32_t was_x = a->x, was_z = a->z, was_y = a->y;
+    int     was_tri = a->tri;
+
     actor_settle(a, frate);
 
     a->frame = (a->frame + 1) % an->frames;
@@ -370,6 +373,15 @@ void actor_step(Actor *a, const Set *s, const Anim *an, int frate)
                                            the loop back to frame zero      */
     AnimFrame f;
     anim_frame(an, a->frame, &f);
+
+    /* HITFRAME, as ANIM.GAS keeps it: the frame this step landed on if it
+     * carries an attack or a defence, and zero otherwise.  The original
+     * records the *first* such frame when one game frame covers several
+     * animation frames; this port advances one at a time, so it is this one.
+     * A hit value on frame zero therefore reads as no hit at all, which is
+     * the convention the comment in ANIM.GAS states - and which four of the
+     * disc's animations quietly break (docs/14-characters.md). */
+    a->hitframe = f.hit && a->frame ? a->frame : 0;
 
     a->facing = (uint8_t)(a->facing + f.turn);
     a->lift  += f.move[1];
@@ -381,4 +393,13 @@ void actor_step(Actor *a, const Set *s, const Anim *an, int frate)
     int32_t mx = (int32_t)lrint(f.move[0] * c + f.move[2] * sn);
     int32_t mz = (int32_t)lrint(f.move[2] * c - f.move[0] * sn);
     actor_move(a, s, mx, mz);
+
+    /* The moveback ANIM.GAS writes as it goes: this frame's movement negated,
+     * and the triangle it came from.  Nothing reads it unless the character
+     * ends the frame in somebody else's collision circle, and then it is the
+     * whole of the resolution - the move is not shortened, it is undone. */
+    a->mbx   = was_x - a->x;
+    a->mby   = was_y - a->y;
+    a->mbz   = was_z - a->z;
+    a->mbtri = was_tri;
 }

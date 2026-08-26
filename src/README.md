@@ -21,6 +21,9 @@ game/         scene.c  a backdrop slot: XOR key, colour, depth, camera footer
                        wears, and what he does when nobody drives him
               act.c    the active character table: one record per character in
                        the world, and AICTRL.GAS's two master loops over it
+              combat.c COMBAT.GAS's PPCOLL: who hit whom, read out of the
+                       animation frame the blow was drawn on, and who is
+                       standing in whom
               game.c   the loop: the script machine, the events it posts, the
                        two master loops, and the event lines on the floor -
                        everything one game frame is, in the order it runs
@@ -60,6 +63,9 @@ build/hlview --check-script                        every script on the disc, run
 build/hlview --film 19                             a film, at its own 12 fps
 build/hlview --film 19 --shot-at 30 --shot f.ppm --no-window
 build/hlview --check-film                          every frame of all 36, decoded
+build/hlview --scene DUN1_CAM04 --char 0 --drive --fight --weapon 1
+build/hlview --list-attacks                        which animations carry a blow
+build/hlview --check-combat                        the duel, checked
 build/hlview --scene SHANR1_CAM00 --char 0 --drive  ...and its script plays one
 build/hlview --help
 ```

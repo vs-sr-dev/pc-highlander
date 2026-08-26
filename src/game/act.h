@@ -39,7 +39,10 @@ typedef struct {
     int         sheet;          /* his character sheet, -1 if none          */
     int         cast;           /* his model bundle, -1 if none             */
     uint16_t    flags;          /* actFlags                                 */
-    uint16_t    status;         /* actStatus: the combat handshake          */
+    uint16_t    status;         /* actStatus: the AI's attack machine, 0
+                                   attack, 1 defend, 2 pause                */
+    uint8_t     knock;          /* citFlags KNOCKBACK1/2: which way the last
+                                   blow came from - 0 back, 2 forward       */
     Control     ctl;            /* actJoypad, actAction, actCount, citStance */
     Ai          ai;             /* actAICommand and actAIData1..4           */
     Actor       actor;          /* the CIT: where he is and what he does    */
@@ -50,9 +53,11 @@ typedef struct {
 } Act;
 
 typedef struct {
-    Act a[ACT_MAX];
-    int n;
-    int player;                 /* the slot the pad drives, -1 if none      */
+    Act  a[ACT_MAX];
+    int  n;
+    int  player;                /* the slot the pad drives, -1 if none      */
+    long frame;                 /* framecount, which is where the AI's
+                                   attack machine gets its rhythm from      */
 } ActTable;
 
 void act_init(ActTable *t);
@@ -70,7 +75,9 @@ int  act_of_world(const ActTable *t, int world);
 /* One game frame over the whole table: ControlCode and then ActionCode, in
  * that order and each complete before the other starts, which is what lets an
  * AI aim at where the player has already got to this frame.  `rawpad` is the
- * hardware pad, in control.h's bit numbering. */
-void act_frame(ActTable *t, const Set *s, uint32_t rawpad);
+ * hardware pad, in control.h's bit numbering, and `ws` is the live world-state
+ * table - where the life points are, which is what decides whether a character
+ * gets a joypad at all.  Pass NULL and nobody is ever dead. */
+void act_frame(ActTable *t, const Set *s, uint32_t rawpad, uint8_t *ws);
 
 #endif

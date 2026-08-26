@@ -134,9 +134,81 @@ static int ai_target(const Ai *ai, const Actor *player, const Actor *person,
     }
 }
 
-uint32_t ai_control(Ai *ai, const Actor *self, const Actor *player,
-                    const Actor *person)
+/* AIAttackCode's `.default`: keep pressing what was pressed last frame, minus
+ * the turn, and add whatever the rotate wants.  It is what an AI character
+ * does while an animation he has already committed to plays out. */
+static uint32_t ai_keep(const AiWorld *w, uint32_t pad)
 {
+    return pad | (w->prev_pad & ~(PAD(JOY_LEFT) | PAD(JOY_RIGHT)));
+}
+
+/* The three states `actStatus` cycles through, and the bits that pick the next
+ * one.  They come out of `AIRandomCode`, which is easy to miss: `ControlCode`
+ * loads `framecount` into reg1 at the top of the loop, and AIRandomCode then
+ * *overwrites* reg1 with that frame count squared, mixed with both characters'
+ * coordinates and rolled a byte at a time.  Every `btst` in AIAttackCode reads
+ * that word, so the rhythm of a fight is a hash of where the two of them are
+ * standing - which is neither periodic nor, strictly, random. */
+#define AI_ATTACK  0
+#define AI_DEFEND  1
+#define AI_PAUSE   2
+
+/* AIAttackCode's and AIShootCode's tail: everything from "he is inside my
+ * reach" onwards.  `melee` is whether this is the melee version, which is the
+ * one that also defends. */
+static uint32_t ai_fight(Ai *ai, const Actor *self, const AiWorld *w,
+                         uint32_t pad, int melee)
+{
+    uint16_t dummy = 0;
+    uint16_t *status = w->status ? w->status : &dummy;
+
+    if (!melee && (w->stance & FSA_PLAY))
+        return ai_keep(w, pad);
+
+    if (melee) {
+        /* Whether to bother at all: how differently the two of them are
+         * facing, in units of an eighth of a step of the 256-step circle.
+         * Sixteen is back to back.  If he is not squared up to me - under
+         * ten, which is about 112 degrees - the machine is reset to attack,
+         * so turning your back invites the swing rather than a stand-off. */
+        int diff = (int8_t)(self->facing - w->target_face) >> 3;
+        if (diff < 0)
+            diff = -diff;
+        if (w->stance & FSA_TURN)
+            return ai_keep(w, pad);
+        if (diff < 10)
+            *status = AI_ATTACK;
+    }
+
+    if (*status == AI_ATTACK) {
+        /* Two attacks: the same word picks which. */
+        pad |= PAD(FIRE_C);
+        if (!(ai->seed & 2))
+            pad |= PAD(FIRE_B);
+        *status = (ai->seed & 0x10) ? AI_ATTACK
+                : (ai->seed & 0x20) ? AI_DEFEND : AI_PAUSE;
+        return pad;
+    }
+    if (melee && *status == AI_DEFEND) {
+        /* The guard, and it is a reply rather than a habit: if the opponent
+         * is swinging - a fire button, and not already blocking himself -
+         * press the same buttons and down, which is the block. */
+        uint32_t his = w->target_pad & (PAD(JOY_DOWN) | PAD(FIRE_A) |
+                                        PAD(FIRE_B) | PAD(FIRE_C));
+        if (!(his & PAD(JOY_DOWN)) && (his & ~PAD(JOY_DOWN)))
+            pad |= his | PAD(JOY_DOWN);
+        *status = (ai->seed & 0x10) ? AI_DEFEND : AI_PAUSE;
+        return pad;
+    }
+    /* The pause, which is what makes a fight readable rather than a blur. */
+    *status = (ai->seed & 0x10) ? AI_ATTACK : (melee ? AI_DEFEND : AI_ATTACK);
+    return pad;
+}
+
+uint32_t ai_control(Ai *ai, const Actor *self, const AiWorld *w)
+{
+    const Actor *player = w->player, *person = w->person;
+
     if (ai->command == AI_DEFAULT) {
         /* AIDefault does not act: it copies the sheet's own behaviour into
          * the command and presses nothing this frame. */
@@ -193,22 +265,44 @@ uint32_t ai_control(Ai *ai, const Actor *self, const Actor *player,
             pad |= PAD(JOY_UP);
         break;
 
-    default:
-        /* AIAttackCode and AIShootCode, as far as this port goes: out past
-         * the sentry range they do nothing at all, and inside it they close
-         * to melee range at a run.  The swing itself is combat - actStatus,
-         * the opponent's own joypad and the hit frames - and belongs with
-         * phase 5, so it is not pretended at here. */
+    default: {
+        /* AIAttackCode and AIShootCode.  Out past the sentry range - twenty
+         * metres - he does nothing at all; inside it he closes, at a run on
+         * every other frame; and inside his reach he fights. */
+        int melee = ai->command == AI_ATTACK_PERSON ||
+                    ai->command == AI_ATTACK_PLAYER;
+        int32_t reach = melee ? AI_MELEE_RANGE : AI_MISSILE_RANGE;
+
         if (ai->dist2 > AI_SENTRY_RANGE * AI_SENTRY_RANGE)
             return 0;
-        if (ai->dist2 > AI_MELEE_RANGE * AI_MELEE_RANGE) {
+        if (ai->dist2 > reach * reach) {
+            /* Not while an animation is still running: interrupting a swing
+             * to take a step is the one thing the original will not do. */
+            if (w->stance & FSA_PLAY)
+                return ai_keep(w, pad);
             pad |= PAD(JOY_UP);
             if (!(ai->seed & 1))
                 pad |= PAD(JOY_DOUBLE);
+            return pad;
         }
-        break;
+        return ai_fight(ai, self, w, pad, melee);
+    }
     }
     return pad;
+}
+
+int ai_person_command(int command)
+{
+    switch (command) {
+    case AI_GOTO_PERSON:
+    case AI_FACE_PERSON:
+    case AI_ATTACK_PERSON:
+    case AI_SHOOT_PERSON:
+    case AI_FOLLOW_PERSON:
+        return 1;
+    default:
+        return 0;
+    }
 }
 
 const char *ai_command_name(int command)

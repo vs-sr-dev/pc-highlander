@@ -108,7 +108,7 @@ void window_poll(Input *in)
             case SDLK_RIGHTBRACKET: case SDLK_PAGEUP:   in->next = 1; break;
             case SDLK_Z:      in->toggle_depth = 1; break;
             case SDLK_SPACE:  in->toggle_spin = 1;  break;
-            case SDLK_S:      in->shot = 1;         break;
+            case SDLK_F2:     in->shot = 1;         break;
             default: break;
             }
         }
@@ -119,13 +119,15 @@ void window_poll(Input *in)
     in->dz = keys[SDL_SCANCODE_DOWN]  - keys[SDL_SCANCODE_UP];
 
     /* The same keys again, as the joypad long AICTRL.GAS reads.  The arrows
-     * are the pad; A, S and D are the three fire buttons, which nothing uses
-     * yet but which the logic table is shaped for. */
+     * are the pad; A, S and D are the three fire buttons, and holding down
+     * with one of them is the guard - which is what the AI presses when it
+     * blocks, so the player has the same three moves it does. */
     in->pad = 0;
     if (keys[SDL_SCANCODE_UP])    in->pad |= 1u << JOY_UP;
     if (keys[SDL_SCANCODE_DOWN])  in->pad |= 1u << JOY_DOWN;
     if (keys[SDL_SCANCODE_LEFT])  in->pad |= 1u << JOY_LEFT;
     if (keys[SDL_SCANCODE_RIGHT]) in->pad |= 1u << JOY_RIGHT;
     if (keys[SDL_SCANCODE_A])     in->pad |= 1u << FIRE_A;
+    if (keys[SDL_SCANCODE_S])     in->pad |= 1u << FIRE_B;
     if (keys[SDL_SCANCODE_D])     in->pad |= 1u << FIRE_C;
 }

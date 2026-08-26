@@ -39,6 +39,11 @@ formats (s15.0 / s1.14 / 8.8), the ordering of operations in the game loop, the
 exact semantics of the script VM, the collision and combat algorithms, and the
 animation and tweening curves.
 
+One reading trap, since every one of those files is Jaguar RISC: **the GPU has
+one delay slot**, and `COMBAT.GAS` settles it from its own arithmetic rather
+than from a manual ([15-combat.md](15-combat.md) 15.7). Read a `jr` as having
+two and the attack-and-defence accumulation comes out backwards.
+
 ## 5.3 Phased roadmap
 
 ### Phase 0 — Analysis — DONE
@@ -172,14 +177,32 @@ Done so far:
 walks Quentin around `DUN1`, the camera cuts where the event lines say, the
 doors lead into the next set — and Ramirez comes too.
 
-### Phase 5 — The game moves
+### Phase 5 — The game moves — **the criterion is met**
 Animation with tweening, character-to-character collision, combat (`PCOL.TXT`),
 AI (`AICTRL.GAS`), item pickup and inventory.
 
-Started: the AI's movement half is in — `face`, `goto` and `follow` — so what
-phase 5 owes it is `AIAttackCode`'s and `AIShootCode`'s other half, which needs
-`actStatus`, the hit frames and the opponent's own joypad.
-**Success criterion:** you can fight a Hunter and one of you dies.
+**Success criterion:** you can fight a Hunter and one of you dies — and you
+can. `src/game/combat.c` is `COMBAT.GAS`'s `PPCOLL`: the pair loop, the reach
+and the arc read out of the animation frame, the parry, the knockback, the life
+points, and the collision word that puts two bodies back out of each other.
+`AIAttackCode`'s other half is in with it — `actStatus`'s three states, and the
+guard that reads the opponent's own joypad and answers his buttons with the
+same ones.
+
+```
+build/hlview --scene DUN1_CAM04 --char 0 --drive --fight --weapon 1
+frame   48: hunter is killed, life 0
+```
+
+`hlview --check-combat` is what says it holds: the fourteen animation roles in
+every bundle that carries a full bank, eleven duels in a real set every one of
+which ends with somebody dead, no life value ever rising, and two hunters
+standing inside each other's reach for 1,185 frames of 1,200 without taking a
+point off each other ([15-combat.md](15-combat.md)).
+
+What phase 5 still owes: **item pickup and inventory**, which is `PPCOLL`'s
+`COLLECTABLE` path and `DeadControl`'s dropping of what a character carried,
+and a projectile for the two `aiShoot` commands.
 
 ### Phase 6 — The game tells a story — **started**
 The script VM (60+ opcodes), a `.SCT` compiler (to rebuild scripts from the

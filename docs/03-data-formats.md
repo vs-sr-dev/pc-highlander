@@ -316,8 +316,14 @@ Tweening between frames is computed at runtime (`citTween`).
 6,591 character frames on the disc costs a mean error of 2.5 units.
 
 Combat comes out of the animation data itself: positive `animHit` is an attack,
-negative is defence/parry, `animRange` is reach. See `PCOL.TXT` for the full
-resolution algorithm.
+negative is defence/parry, `animRange` is reach, `animDirAz` is which way the
+blow points and `animSprAz` how wide its arc is. `PCOL.TXT` is the design note
+and `COMBAT.GAS` the code; [15-combat.md](15-combat.md) is both of them read,
+ported and checked. It also settles what the *numbering* of a bundle's
+animations means, which is a fact about the format rather than about any one
+character: 0 to 3 are the four falls, 4 and 5 the two staggers, 8 is lying
+there, 19 to 25 the attacks and 26 and 27 the guards, in every bundle on the
+disc that carries a full bank.
 
 Animation state flags (`LOGICS.INC`): `FSATurn`, `FSAPlay`, `FSALock`,
 `FSAShield`, `FSAHit`.

@@ -62,6 +62,18 @@ typedef struct {
                                    write it, not yet read by the movement  */
     int32_t lift;               /* the animation's own accumulated y move  */
     int     frame;              /* the frame last shown                    */
+
+    /* What COMBAT.GAS reads back out of the animation player.  `hitframe` is
+     * `HITFRAME`: the first frame carrying an `animHit` that this game frame
+     * stepped over, or zero - the combat code reads the hit value, the reach
+     * and the arc out of that frame, so an attack lands on the frame the
+     * animator drew it on and not on the frame the game happened to sample.
+     * The rest is the moveback: what this frame's movement was, negated, and
+     * the triangle it started on, so that a collision can be undone whole. */
+    int     hitframe;
+    int32_t mbx, mby, mbz;      /* citXmoveback, citYmoveback, citZmoveback */
+    int     mbtri;              /* citTmoveback                            */
+    int32_t collision;          /* citCollision: what is pushing on him    */
 } Actor;
 
 /* Collects the bundle whose first piece is list[first] - a model that hangs on

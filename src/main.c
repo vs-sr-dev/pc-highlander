@@ -28,6 +28,7 @@
 #include "game/act.h"
 #include "script/vm.h"
 #include "game/game.h"
+#include "game/combat.h"
 #include "media/film.h"
 #include "media/cinepak.h"
 #include "r3d/r3d.h"
@@ -51,6 +52,8 @@ typedef struct {
     int   list_scenes, list_models, list_objects, list_chars, list_sheets;
     int   alone;
     int   film;
+    int   fight;
+    int   weapon;
 } Args;
 
 static char path_pict[512], path_boot[512], path_t5[512], path_set[512];
@@ -338,6 +341,54 @@ static int cast_join(ActTable *t, Cast *cast, int world, int sheet, int b,
     if (i >= 0)
         ai_init(&t->a[i].ai, behaviour);
     return i;
+}
+
+/* Where a weapon's animations begin inside the player's bundle.
+ *
+ * Quentin's bundle carries **114** animations and his own sheet declares
+ * **30**.  The other 84 are three banks of 28, and there are exactly three
+ * sheets on the disc with one model and 28 animations - sheets 22, 23 and 24,
+ * the weapons.  30 + 28 + 28 + 28 = 114, and the combat animations land where
+ * that arithmetic says they should: `hlview --list-attacks` finds attack and
+ * defence values at 19..27, then again at 49..57, 77..85 and 105..113, which
+ * is the same 19..27 at offsets 0, 30, 58 and 86.
+ *
+ * That is `AICTRL.GAS`'s `.weapon_action`: the player's animation number is
+ * looked up in the sheet of whatever he is holding before falling back to his
+ * own, so picking up a sword does not change the table, it changes which bank
+ * the same table's numbers land in.  Bank 0 is bare hands, and its attacks do
+ * 2 points; bank 1 does 30, bank 2 does 127 and bank 3 is the one with a reach
+ * of 1,000 and an arc of five degrees, which is a thing you shoot with. */
+static int weapon_bank(const Sheets *sh, int n)
+{
+    if (n <= 0)
+        return 0;
+    int off = sh->nsheets > 1 ? sh->sheet[1].anims : 0;
+    int seen = 0;
+    for (int i = 0; i < sh->nsheets; i++) {
+        if (sh->sheet[i].models != 1 || sh->sheet[i].anims == 0)
+            continue;
+        if (++seen == n)
+            return off;
+        off += sh->sheet[i].anims;
+    }
+    return -1;
+}
+
+/* The first world record wearing a given sheet, which is how a character who
+ * is only known by his sheet gets a body: the radius, the strength and the
+ * life points all live on the world record, and combat reads all three. */
+static int world_of_sheet(const Sheets *sh, int sheet)
+{
+    if (sheet < 0)
+        return -1;
+    for (int w = 2; w < sh->nworld; w++) {
+        if (!sh->world[w].sheet)
+            continue;
+        if (sheets_of_addr(sh, sh->world[w].sheet) == sheet)
+            return w;
+    }
+    return -1;
 }
 
 /* ---- the doorways, checked ----------------------------------------- */
@@ -750,7 +801,7 @@ static int check_follow(void)
             /* 300 frames of forward, then let go and stand.  One call: the
              * table is what AICTRL.GAS's two loops walk, and the player and
              * the follower are two records in it. */
-            act_frame(&acts, &set, f < 300 ? PAD(JOY_UP) : 0);
+            act_frame(&acts, &set, f < 300 ? PAD(JOY_UP) : 0, NULL);
             if (co->tri < 0)
                 off++;
             int64_t dx = co->x - player->x, dz = co->z - player->z;
@@ -1213,6 +1264,403 @@ static int check_film(void)
     return errors == 0 && unaccounted == 0 && resume == 0 && frames > 0;
 }
 
+/* ---- what the animations say about combat --------------------------- */
+
+/* Combat is not a table somewhere: it is in the animation data.  Every frame
+ * carries `animHit` - positive is an attack, negative is a defence - with
+ * `animRange` for the reach and `animDirAz` / `animSprAz` for the direction it
+ * covers and how wide that arc is, and COMBAT.GAS reads them straight out of
+ * the frame the character is on.  So which of a bundle's animations are swings
+ * is a question the disc answers.  This prints the answer. */
+static int list_attacks(void)
+{
+    Cast c;
+    if (!cast_open(&c)) {
+        fprintf(stderr, "no character bundles on track 5\n");
+        return 0;
+    }
+
+    long attacks = 0, defences = 0, anims = 0, hitanims = 0;
+
+    for (int b = 0; b < c.ncast; b++) {
+        if (c.first_anim[b] < 0)
+            continue;
+        printf("bundle %2d, %d animations\n", b, c.nanim[b]);
+        for (int i = 0; i < c.nanim[b]; i++) {
+            const Anim *a = &c.anim[c.first_anim[b] + i];
+            anims++;
+            int nhit = 0, ndef = 0, first = -1;
+            int peak = 0, reach = 0, dir = 0, spread = 0;
+            for (int f = 0; f < a->frames; f++) {
+                AnimFrame fr;
+                anim_frame(a, f, &fr);
+                if (!fr.hit)
+                    continue;
+                if (first < 0) {
+                    first = f;
+                    reach = fr.range;
+                    dir = fr.dir[0];
+                    spread = fr.spread[0];
+                }
+                if (fr.hit > 0) { nhit++; attacks++; }
+                else            { ndef++; defences++; }
+                if (fr.hit > peak || -fr.hit > peak)
+                    peak = fr.hit > 0 ? fr.hit : -fr.hit;
+            }
+            if (first < 0)
+                continue;
+            hitanims++;
+            printf("  anim %3d  %2d frames  %s on frame %d of %d"
+                   "  %d attack %d defence  peak %d  reach %d"
+                   "  direction %d spread %d\n",
+                   i, a->frames, nhit ? "attack" : "defence", first,
+                   a->frames, nhit, ndef, peak, reach, dir, spread);
+        }
+    }
+    printf("%ld animations, %ld of them carrying a hit value: "
+           "%ld attack frames and %ld defence frames\n",
+           anims, hitanims, attacks, defences);
+    return 1;
+}
+
+/* Every animation of one bundle, read off its own root motion the way
+ * session 8 read Quentin's thirty: how far the root travels, how far it
+ * turns, and what combat values its frames carry.  That is how an animation
+ * gets a name here - nothing on the disc names them. */
+static int list_anims(int which)
+{
+    Cast c;
+    if (!cast_open(&c)) {
+        fprintf(stderr, "no character bundles on track 5\n");
+        return 0;
+    }
+    if (which < 0 || which >= c.ncast || c.first_anim[which] < 0) {
+        fprintf(stderr, "bundle %d: the track has %d\n", which, c.ncast);
+        return 0;
+    }
+    printf("bundle %d, %d animations\n", which, c.nanim[which]);
+    printf("  #  frames    dx    dy    dz   turn  per frame  high0 highN  hit\n");
+    for (int i = 0; i < c.nanim[which]; i++) {
+        const Anim *a = &c.anim[c.first_anim[which] + i];
+        long dx = 0, dy = 0, dz = 0, turn = 0;
+        int hit = 0, def = 0;
+        for (int f = 0; f < a->frames; f++) {
+            AnimFrame fr;
+            anim_frame(a, f, &fr);
+            dx += fr.move[0];
+            dy += fr.move[1];
+            dz += fr.move[2];
+            turn += fr.turn;
+            if (fr.hit > 0) hit++;
+            else if (fr.hit < 0) def++;
+        }
+        AnimFrame f0, fn;
+        anim_frame(a, 0, &f0);
+        anim_frame(a, a->frames - 1, &fn);
+        printf("%3d  %6d %5ld %5ld %5ld %6ld %10.1f %6d %5d", i, a->frames,
+               dx, dy, dz, turn,
+               a->frames ? (double)dz / a->frames : 0.0, f0.high, fn.high);
+        if (hit || def)
+            printf("  %d attack %d defence", hit, def);
+        printf("\n");
+    }
+    return 1;
+}
+
+/* Three readings of one animation, for the check below: how high the pose is
+ * at its first or last frame, how far the root travels along z, and the hit
+ * value the frames carry. */
+static int c_nanim(const Cast *c, int b)
+{
+    return b >= 0 && b < c->ncast && c->first_anim[b] >= 0 ? c->nanim[b] : 0;
+}
+
+static const Anim *c_anim(const Cast *c, int b, int k)
+{
+    return k < c_nanim(c, b) ? &c->anim[c->first_anim[b] + k] : NULL;
+}
+
+static int anim_high(const Cast *c, int b, int k, int last)
+{
+    const Anim *a = c_anim(c, b, k);
+    if (!a)
+        return 0;
+    AnimFrame f;
+    anim_frame(a, last ? a->frames - 1 : 0, &f);
+    return f.high;
+}
+
+static long anim_move(const Cast *c, int b, int k)
+{
+    const Anim *a = c_anim(c, b, k);
+    long dz = 0;
+    if (!a)
+        return 0;
+    for (int i = 0; i < a->frames; i++) {
+        AnimFrame f;
+        anim_frame(a, i, &f);
+        dz += f.move[2];
+    }
+    return dz;
+}
+
+/* Positive if the animation attacks, negative if it defends, zero if neither. */
+static int anim_hit(const Cast *c, int b, int k)
+{
+    const Anim *a = c_anim(c, b, k);
+    if (!a)
+        return 0;
+    for (int i = 0; i < a->frames; i++) {
+        AnimFrame f;
+        anim_frame(a, i, &f);
+        if (f.hit)
+            return f.hit;
+    }
+    return 0;
+}
+
+static int32_t dist_between(const Actor *a, const Actor *b)
+{
+    double dx = a->x - b->x, dz = a->z - b->z;
+    return (int32_t)lrint(sqrt(dx * dx + dz * dz));
+}
+
+/* ---- the combat, checked -------------------------------------------- */
+
+/* Two things have to hold, and neither of them is "it looked like a fight".
+ *
+ * **The animation numbering is a convention shared by every bundle.** The
+ * joypad table this port drives everybody with was read off Quentin's thirty
+ * animations alone - 6 is the stand, 10 the walk, 15 and 16 the turns - and
+ * every other character on the disc is then driven through the same numbers.
+ * That is only sound if the numbering is the format's rather than Quentin's,
+ * so ask the data: in every bundle that carries a full bank, 0 to 3 must end
+ * with the body on the floor, 4 and 5 must stay upright and travel backwards
+ * and forwards, 8 must be a pose already on the floor, 19 to 25 must carry a
+ * positive `animHit` and 26 and 27 a negative one.  Nothing in this test knows
+ * which character it is looking at.
+ *
+ * **A duel resolves, and only between the player and somebody else.** Put the
+ * player, a hunter and a second hunter down in a real set at a range of real
+ * distances, hold the attack button, and run it out.  What must come out of it
+ * is that somebody dies; that no life value ever rises or goes below zero; and
+ * that the two hunters never take a point off each other, which is
+ * COMBAT.GAS's own rule of 1/05/95 and the one thing about this pass that a
+ * bug would quietly undo. */
+static int check_combat(void)
+{
+    Cast cast;
+    if (!cast_open(&cast)) {
+        fprintf(stderr, "no character bundles on track 5\n");
+        return 0;
+    }
+    Sheets sh;
+    if (!sheets_load(&sh, path_boot)) {
+        fprintf(stderr, "no world table in %s\n", path_boot);
+        return 0;
+    }
+    long off[CAST_MAX];
+    for (int i = 0; i < cast.ncast && i < CAST_MAX; i++)
+        off[i] = cast.bundle[i].piece[0]->offset;
+    sheets_bundles(&sh, off, cast.ncast);
+
+    /* 1: the convention. */
+    int banks = 0, wrong = 0;
+    for (int b = 0; b < cast.ncast; b++) {
+        if (c_nanim(&cast, b) < 28)
+            continue;
+        banks++;
+        int bad = 0;
+        for (int k = 0; k < 4; k++)
+            if (anim_high(&cast, b, k, 0) < 350 || anim_high(&cast, b, k, 1) > 200)
+                bad++;                          /* the four that end down    */
+        if (anim_high(&cast, b, 4, 1) < 350 || anim_move(&cast, b, 4) > -100)
+            bad++;                              /* knocked back, upright     */
+        if (anim_high(&cast, b, 5, 1) < 350 || anim_move(&cast, b, 5) < 100)
+            bad++;                              /* knocked forward, upright  */
+        if (anim_high(&cast, b, 8, 0) > 200)
+            bad++;                              /* already lying there       */
+        for (int k = 19; k <= 25; k++)
+            if (anim_hit(&cast, b, k) <= 0)
+                bad++;
+        for (int k = 26; k <= 27; k++)
+            if (anim_hit(&cast, b, k) >= 0)
+                bad++;
+        if (bad) {
+            printf("  bundle %2d: %d of the fourteen roles do not hold\n",
+                   b, bad);
+            wrong += bad;
+        }
+    }
+    printf("animation roles: %d bundles with a full bank, %d departures from "
+           "the convention\n", banks, wrong);
+
+    /* 2: the duel, one on one. */
+    int hs = sheets_by_behaviour(&sh, AI_ATTACK_PLAYER);
+    int hb = hs >= 0 ? sh.sheet[hs].bundle : -1;
+    int hw = world_of_sheet(&sh, hs);
+    int hw2 = -1;
+    for (int w = hw + 1; w < sh.nworld && hw >= 0; w++)
+        if (sh.world[w].sheet && sheets_of_addr(&sh, sh.world[w].sheet) == hs) {
+            hw2 = w;
+            break;
+        }
+    if (hb < 0 || hw < 0 || hw2 < 0) {
+        fprintf(stderr, "no aiAttackPlayer sheet with a bundle and two world "
+                        "records\n");
+        return 0;
+    }
+    printf("hunter: sheet %d, bundle %d with %d animations, world records %d "
+           "and %d\n", hs, hb, c_nanim(&cast, hb), hw, hw2);
+
+    Blob boot = io_read(path_boot);
+    const uint8_t *world = boot.data
+                         ? boot.data + (0x15458 - 0x5000 + 0x12600) : NULL;
+    static uint8_t ws[WS_COUNT * WS_REC];
+
+    long duels = 0, resolved = 0, rose = 0, armed_wins = 0, bare_wins = 0;
+    long total_damage = 0, frames_to_kill = 0;
+
+    for (int trial = 0; trial < 16; trial++) {
+        Set set;
+        if (!set_load(&set, path_set, 19))          /* DUN1: room to move   */
+            break;
+        ActTable acts;
+        act_init(&acts);
+        int ip = cast_join(&acts, &cast, WORLD_PLAYER, 1, 0,
+                           &control_quentin, AI_NOP);
+        acts.player = ip;
+        /* Armed on half the trials, which is what decides who wins. */
+        int bank = (trial & 1) ? weapon_bank(&sh, 1) : 0;
+        if (bank > 0 && bank + 28 <= c_nanim(&cast, 0)) {
+            acts.a[ip].anims  += bank;
+            acts.a[ip].nanims -= bank;
+        }
+        int ih = cast_join(&acts, &cast, hw, hs, hb, &control_quentin,
+                           AI_ATTACK_PLAYER);
+
+        const SetEntry *e0 = &set.entry[set.nentries ? trial % set.nentries : 0];
+        int32_t px = e0->x, pz = e0->z;
+        if (ip < 0 || ih < 0 || !actor_place(&acts.a[ip].actor, &set, px, pz, 0)) {
+            set_free(&set);
+            continue;
+        }
+        double k = 2.0 * 3.14159265358979323846 / 256.0;
+        int a1 = (trial * 37) & 0xFF;
+        int ok = 0;
+        for (int try = 0; try < 6 && !ok; try++) {
+            int32_t r = 400 + try * 120;
+            ok = actor_place(&acts.a[ih].actor, &set,
+                             px + (int32_t)lrint(r * sin(a1 * k)),
+                             pz + (int32_t)lrint(r * cos(a1 * k)),
+                             (a1 + 128) & 0xFF);
+        }
+        if (!ok) {
+            set_free(&set);
+            continue;
+        }
+        duels++;
+
+        if (world)
+            memcpy(ws, world, sizeof ws);
+        int rec[2] = { WORLD_PLAYER, hw };
+        int life[2] = { ws[rec[0] * WS_REC + WS_LIFE],
+                        ws[rec[1] * WS_REC + WS_LIFE] };
+        int dead = -1, f;
+
+        for (f = 0; f < 20000 && dead < 0; f++) {
+            act_frame(&acts, &set, PAD(FIRE_A), ws);
+            combat_frame(&acts, ws);
+            total_damage += combat_stats.damage;
+            for (int q = 0; q < 2; q++) {
+                int now = ws[rec[q] * WS_REC + WS_LIFE];
+                if (now > life[q])
+                    rose++;
+                life[q] = now;
+                if (now == 0)
+                    dead = q;
+            }
+        }
+        if (dead >= 0) {
+            resolved++;
+            frames_to_kill += f;
+            if (dead == 1) {
+                if (bank) armed_wins++;
+                else      bare_wins++;
+            }
+        } else {
+            printf("  trial %2d, %s: a stand-off - life %d against %d after "
+                   "20,000 frames\n", trial, bank ? "armed" : "bare",
+                   life[0], life[1]);
+        }
+        set_free(&set);
+    }
+
+    printf("duels: %ld fought one on one, %ld ended with somebody dead, "
+           "%.0f frames each\n", duels, resolved,
+           resolved ? (double)frames_to_kill / resolved : 0.0);
+    printf("  the hunter died %ld of the %ld times the player had a weapon "
+           "and %ld of the %ld he had his hands\n", armed_wins, duels / 2,
+           bare_wins, duels - duels / 2);
+    printf("  %ld life values that went up, which is what says no life byte "
+           "wrapped\n", rose);
+
+    /* 3: and they must not fight each other.  Two hunters together, the
+     * player a long way off: COMBAT.GAS drops any pair that is not one of
+     * each, and this is the only thing in the pass that would quietly undo
+     * it. */
+    long crossfire = 0, together = 0;
+    {
+        Set set;
+        if (set_load(&set, path_set, 19)) {
+            ActTable acts;
+            act_init(&acts);
+            int ip = cast_join(&acts, &cast, WORLD_PLAYER, 1, 0,
+                               &control_quentin, AI_NOP);
+            acts.player = ip;
+            int i1 = cast_join(&acts, &cast, hw,  hs, hb, &control_quentin,
+                               AI_ATTACK_PLAYER);
+            int i2 = cast_join(&acts, &cast, hw2, hs, hb, &control_quentin,
+                               AI_ATTACK_PLAYER);
+            const SetEntry *e0 = &set.entry[0];
+            if (world)
+                memcpy(ws, world, sizeof ws);
+            /* Take the player out of it the way the engine itself does - a
+             * zero radius, which COMBAT.GAS reads as uncollidable and drops
+             * every pair he is in.  What is left is the two hunters. */
+            ws[WORLD_PLAYER * WS_REC + WS_RADIUS] = 0;
+            ws[WORLD_PLAYER * WS_REC + WS_RADIUS + 1] = 0;
+            if (actor_place(&acts.a[ip].actor, &set, e0->x, e0->z, 0) &&
+                actor_place(&acts.a[i1].actor, &set, e0->x + 150, e0->z, 64) &&
+                actor_place(&acts.a[i2].actor, &set, e0->x - 150, e0->z, 192)) {
+                int l1 = ws[hw * WS_REC + WS_LIFE];
+                int l2 = ws[hw2 * WS_REC + WS_LIFE];
+                for (int f = 0; f < 1200; f++) {
+                    act_frame(&acts, &set, PAD(FIRE_A), ws);
+                    combat_frame(&acts, ws);
+                    if (dist_between(&acts.a[i1].actor,
+                                     &acts.a[i2].actor) < 600)
+                        together++;
+                }
+                crossfire = (l1 - ws[hw * WS_REC + WS_LIFE]) +
+                            (l2 - ws[hw2 * WS_REC + WS_LIFE]);
+                /* Whatever the player did to them is his; what matters is
+                 * that the two of them, standing on top of each other for
+                 * most of the run, never took a point off each other. */
+            }
+            set_free(&set);
+        }
+    }
+    printf("  two hunters within reach of each other for %ld frames of "
+           "1,200, and %ld points of damage between them\n", together,
+           crossfire);
+
+    io_free(&boot);
+
+    return wrong == 0 && duels > 0 && resolved == duels && rose == 0 &&
+           armed_wins > bare_wins && together > 0 && crossfire == 0;
+}
+
 /* ---- drawing a character ------------------------------------------- */
 
 static void draw_actor(R3dTarget *t, const Bundle *b, const ActorPose *pose,
@@ -1266,11 +1714,15 @@ static void usage(void)
 "  --events          fire the set's events: the camera cuts, and the doors\n"
 "  --list-scenes | --list-models | --list-objects | --list-chars\n"
 "  --alone           leave the companion out of --drive\n"
+"  --fight           put a hunter in the set, two metres in front\n"
+"  --weapon N        1, 2 or 3: which bank of the bundle he swings\n"
 "  --list-sheets     the character sheets, and what each one wears\n"
+"  --list-anims N    one bundle's animations, by their own root motion\n"
+"  --list-attacks    which animations carry a blow, and how hard\n"
 "  --film N          play one of the 36 Cinepak films, at its own 12 fps\n"
 "                    with --shot F.ppm --shot-at N it writes frame N out\n"
 "  --check-mesh | --check-char | --check-doors | --check-follow\n"
-"  --check-script | --check-film\n");
+"  --check-script | --check-film | --check-combat\n");
 }
 
 static int parse_triple(const char *s, int *out)
@@ -1338,7 +1790,7 @@ int main(int argc, char **argv)
                -1, 0, -1, 0, 0, 0, 0,
                0, {0,0,0}, 0, {0,0,0},
                R3D_CULL_NONE, 0, 0, 0, 0, 0,
-               0, -1 };
+               0, -1, 0, 0 };
 
     for (int i = 1; i < argc; i++) {
         const char *v = i + 1 < argc ? argv[i + 1] : NULL;
@@ -1378,7 +1830,11 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--list-objects")) a.list_objects = 1;
         else if (!strcmp(argv[i], "--list-chars"))   a.list_chars = 1;
         else if (!strcmp(argv[i], "--list-sheets"))  a.list_sheets = 1;
+        else if (!strcmp(argv[i], "--list-attacks")) { paths(a.tracks); return !list_attacks(); }
+        else if (!strcmp(argv[i], "--list-anims") && v) { paths(a.tracks); return !list_anims(atoi(argv[++i])); }
         else if (!strcmp(argv[i], "--alone"))        a.alone = 1;
+        else if (!strcmp(argv[i], "--fight"))        a.fight = 1;
+        else if (!strcmp(argv[i], "--weapon") && v)  a.weapon = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--film")     && v) a.film = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--check-mesh")) { paths(a.tracks); return !check_mesh(); }
         else if (!strcmp(argv[i], "--check-char")) { paths(a.tracks); return !check_char(); }
@@ -1386,6 +1842,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--check-follow")) { paths(a.tracks); return !check_follow(); }
         else if (!strcmp(argv[i], "--check-script")) { paths(a.tracks); return !check_script(); }
         else if (!strcmp(argv[i], "--check-film")) { paths(a.tracks); return !check_film(); }
+        else if (!strcmp(argv[i], "--check-combat")) { paths(a.tracks); return !check_combat(); }
         else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) { usage(); return 0; }
         else { usage(); return argv[i][0] == '-' ? 1 : 0; }
     }
@@ -1691,7 +2148,7 @@ int main(int argc, char **argv)
      * doorways.  What stays here is what needs a screen - loading a backdrop
      * and drawing. */
     Game game;
-    int have_game = 0;
+    int have_game = 0, hunter = -1;
     if (a.drive && have_cast && have_set && have_scene) {
         if (!game_open(&game, path_set, path_boot)) {
             fprintf(stderr, "cannot open the world tables from %s\n", path_boot);
@@ -1703,6 +2160,19 @@ int main(int argc, char **argv)
         game.act.player = ip;
         printf("player: world %d, bundle %d with %d animations\n",
                WORLD_PLAYER, a.character, cast.nanim[a.character]);
+
+        /* What he is holding, which is an offset into his own bundle and
+         * nothing else - the table's animation numbers do not change. */
+        int bank = weapon_bank(&game.sheets, a.weapon);
+        if (a.weapon > 0 && ip >= 0 && bank >= 0 &&
+            bank + 28 <= cast.nanim[a.character]) {
+            game.act.a[ip].anims  += bank;
+            game.act.a[ip].nanims -= bank;
+            printf("weapon %d: animations %d..%d of the bundle\n", a.weapon,
+                   bank, bank + 27);
+        } else if (a.weapon > 0) {
+            fprintf(stderr, "no weapon bank %d in this bundle\n", a.weapon);
+        }
         if (fs >= 0 && !a.alone) {
             cast_join(&game.act, &cast, WORLD_COMPANION, fs, fb,
                       &control_follower, game.sheets.sheet[fs].behaviour);
@@ -1713,6 +2183,31 @@ int main(int argc, char **argv)
         } else if (!a.alone) {
             fprintf(stderr, "no aiFollowPlayer sheet with a bundle - "
                             "going alone\n");
+        }
+
+        /* And somebody to fight, if asked.  A hunter is a sheet whose
+         * cshBehaviour reads aiAttackPlayer, a world record wearing that
+         * sheet - which is where his reach, his strength and his life points
+         * come from - and the same joypad table everyone else uses, because
+         * his bundle numbers its animations the same way. */
+        if (a.fight) {
+            int hs = sheets_by_behaviour(&game.sheets, AI_ATTACK_PLAYER);
+            int hb = hs >= 0 ? game.sheets.sheet[hs].bundle : -1;
+            int hw = world_of_sheet(&game.sheets, hs);
+            if (hb >= 0 && hb < cast.ncast && hw >= 0) {
+                int ih = cast_join(&game.act, &cast, hw, hs, hb,
+                                   &control_quentin, AI_ATTACK_PLAYER);
+                if (ih >= 0) {
+                    hunter = ih;
+                    printf("hunter: world %d, sheet %d, %s, bundle %d with %d "
+                           "animations\n", hw, hs,
+                           ai_command_name(AI_ATTACK_PLAYER), hb,
+                           cast.nanim[hb]);
+                }
+            } else {
+                fprintf(stderr, "no aiAttackPlayer sheet with a bundle and a "
+                                "world record\n");
+            }
         }
 
         /* Arrive.  The set the scene footer names is the one that owns it, so
@@ -1727,10 +2222,26 @@ int main(int argc, char **argv)
         if (a.have_pos && ip >= 0)
             actor_place(&game.act.a[ip].actor, &game.set, a.pos[0], a.pos[2],
                         a.have_face ? a.face[1] : game.act.a[ip].actor.facing);
+        /* Two metres in front of where the player is standing, facing him -
+         * which is inside his sentry range and outside his reach, so the
+         * first thing that happens is that he closes. */
+        if (hunter >= 0 && ip >= 0) {
+            const Actor *q = &game.act.a[ip].actor;
+            double k = 2.0 * 3.14159265358979323846 / 256.0;
+            int32_t hx = q->x + (int32_t)lrint(700 * sin(q->facing * k));
+            int32_t hz = q->z + (int32_t)lrint(700 * cos(q->facing * k));
+            if (!actor_place(&game.act.a[hunter].actor, &game.set, hx, hz,
+                             (q->facing + 128) & 0xFF))
+                actor_place(&game.act.a[hunter].actor, &game.set, q->x, q->z,
+                            (q->facing + 128) & 0xFF);
+            vm_register(&game.vm, game.act.a[hunter].world);
+        }
+
         have_game = 1;
         for (int i = 0; i < game.act.n; i++)
             printf("  %-9s at (%6d,%6d) on triangle %3d facing %3d\n",
-                   i == game.act.player ? "player" : "companion",
+                   i == game.act.player ? "player"
+                                        : i == hunter ? "hunter" : "companion",
                    game.act.a[i].actor.x, game.act.a[i].actor.z,
                    game.act.a[i].actor.tri, game.act.a[i].actor.facing);
         printf("  the machine starts on the first frame: MAINSCRIPT, and set"
@@ -2040,6 +2551,25 @@ int main(int argc, char **argv)
             if (game.gameover) {
                 printf("frame %4ld: a script called reset\n", game.frame);
                 game.gameover = 0;
+            }
+
+            /* What PPCOLL did this frame, and only when it did something.  The
+             * life points are the world state's own, which is where combat
+             * writes them and where a script reads them back. */
+            if (combat_stats.hits || combat_stats.parries) {
+                for (int i = 0; i < game.act.n; i++) {
+                    const Act *c = &game.act.a[i];
+                    if (!(c->ctl.stance & (FSA_HIT | FSA_SHIELD)))
+                        continue;
+                    int life = c->world >= 0
+                             ? game.vm.ws[c->world * WS_REC + WS_LIFE] : 0;
+                    printf("frame %4ld: %s %s, life %d\n", game.frame,
+                           i == game.act.player ? "player"
+                             : i == hunter ? "hunter" : "companion",
+                           (c->ctl.stance & FSA_HIT)
+                               ? (life ? "is hit" : "is killed") : "parries",
+                           life);
+                }
             }
 
             if (game.vm.opcount[74] != last_trih) {

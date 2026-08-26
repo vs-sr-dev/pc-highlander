@@ -1,5 +1,7 @@
 #include "game.h"
 
+#include "combat.h"
+
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -241,7 +243,11 @@ void game_frame(Game *g, uint32_t rawpad)
 
     /* 3. Everybody's frame: the joypad for all of them, and only then the
      * animation that moves them. */
-    act_frame(&g->act, &g->set, rawpad);
+    act_frame(&g->act, &g->set, rawpad, g->vm.ws);
+
+    /* 3b. PPCOLL, which MAIN.S runs straight after the animation player and
+     * before the 3D engine: who hit whom, and who is standing in whom. */
+    combat_frame(&g->act, g->vm.ws);
 
     /* 4. The floor's own event lines.  Only the player crosses them - the
      * companion walking over a doorway does not take you through it. */

@@ -117,6 +117,28 @@ A native PC reimplementation of **Highlander: The Last of the MacLeods**
 > **the walkway moves under the character**. A puzzle off the disc, on the
 > disc's own data.
 >
+> **And you can fight.** Phase 5's success criterion was "you can fight a
+> Hunter and one of you dies", and `src/game/combat.c` is `COMBAT.GAS`'s
+> `PPCOLL`: the pair loop, the parry, the knockback, the life points and the
+> collision that puts two bodies back out of each other. What makes it work is
+> that **the moves are the animations** — every frame carries a hit value, a
+> reach, a direction and an arc, so which animations are sword swings is a
+> question the disc answers rather than a table somebody writes. 87 of the 285
+> animations on track 5 carry one, and in every bundle they sit at the same
+> numbers. That settles something the port had been relying on without proof:
+> the animation numbering belongs to the **format**, not to Quentin, and
+> `--check-combat` now asserts fourteen roles per bundle — four falls, two
+> staggers, the attacks, the guards — across every bundle with a full bank,
+> with no departures. It also explains his 114 animations: 30 of his own plus
+> **three weapon banks of 28**, which is `AICTRL.GAS` looking an animation
+> number up in the sheet of whatever he is holding. His hands hit for 2 and the
+> first sword for 30, which is the difference between winning and losing.
+> Two things the source settles on the way: `actStatus`'s rhythm is not the
+> frame counter but a hash of it with both characters' positions, because
+> `AIRandomCode` overwrites the register it is read from; and the Jaguar GPU has
+> **one** delay slot, which COMBAT.GAS proves from its own arithmetic and which
+> every `.GAS` file in the dump has to be read under.
+>
 > **And the films play.** Track 7 is 36 Cinepak films, 19 minutes of them, and
 > the hole in the port was exactly film-shaped: the container was read, the
 > speech inside it verified, and 32 of the 36 placed by the block offset a
@@ -212,6 +234,7 @@ Z-buffer**, plus **Cinepak** full-motion video and **Red Book** CD audio.
 | [docs/12-world-and-sheets.md](docs/12-world-and-sheets.md) | The world-state table and the character sheets |
 | [docs/13-viewer.md](docs/13-viewer.md) | The viewer: the view transform, the Z-buffer convention, the rasteriser, the floor |
 | [docs/14-characters.md](docs/14-characters.md) | The character: the skeleton, the pose, movement over the mesh, the camera cuts |
+| [docs/15-combat.md](docs/15-combat.md) | Combat: PPCOLL, the hit frames, and the weapon banks |
 | [docs/sessions/](docs/sessions/) | Work log, one note per session |
 
 ## The engine

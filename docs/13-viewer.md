@@ -326,5 +326,6 @@ named from `assets/manifest.json` — `CA_CAM03`, not an index — and world rec
 by their July names, `CA_WINE` or `#5`.
 
 In the window: `[` and `]` step through scenes, `z` toggles the depth view,
-arrow keys nudge the object over the floor, `space` starts and stops the spin,
-`s` writes a screenshot, `q` quits.
+arrow keys nudge the object over the floor and drive the character, `a`, `s`
+and `d` are the three fire buttons - down and one of them is the guard -
+`space` starts and stops the spin, `F2` writes a screenshot, `q` quits.
