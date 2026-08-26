@@ -9,24 +9,53 @@
 static SDL_Window   *win;
 static SDL_Renderer *ren;
 static SDL_Texture  *tex;
+static int           tex_w = SCENE_W, tex_h = SCENE_H, tex_scale = 1;
 
-int window_open(const char *title, int scale)
+int window_open_size(const char *title, int w, int h, int scale)
 {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("SDL_Init: %s", SDL_GetError());
         return 0;
     }
-    if (!SDL_CreateWindowAndRenderer(title, SCENE_W * scale, SCENE_H * scale,
+    if (!SDL_CreateWindowAndRenderer(title, w * scale, h * scale,
                                      SDL_WINDOW_RESIZABLE, &win, &ren)) {
         SDL_Log("SDL_CreateWindowAndRenderer: %s", SDL_GetError());
         return 0;
     }
     tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_XRGB8888,
-                            SDL_TEXTUREACCESS_STREAMING, SCENE_W, SCENE_H);
+                            SDL_TEXTUREACCESS_STREAMING, w, h);
     if (!tex)
         return 0;
     SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
+    tex_w = w;
+    tex_h = h;
+    tex_scale = scale > 0 ? scale : 1;
     return 1;
+}
+
+int window_resize(int w, int h)
+{
+    if (!ren)
+        return 0;
+    if (w == tex_w && h == tex_h)
+        return 1;
+    SDL_Texture *t = SDL_CreateTexture(ren, SDL_PIXELFORMAT_XRGB8888,
+                                       SDL_TEXTUREACCESS_STREAMING, w, h);
+    if (!t)
+        return 0;
+    if (tex)
+        SDL_DestroyTexture(tex);
+    tex = t;
+    SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
+    SDL_SetWindowSize(win, w * tex_scale, h * tex_scale);
+    tex_w = w;
+    tex_h = h;
+    return 1;
+}
+
+int window_open(const char *title, int scale)
+{
+    return window_open_size(title, SCENE_W, SCENE_H, scale);
 }
 
 void window_close(void)
@@ -42,16 +71,26 @@ void window_present(const uint16_t *fb)
     void *pixels;
     int pitch;
     if (SDL_LockTexture(tex, NULL, &pixels, &pitch)) {
-        for (int y = 0; y < SCENE_H; y++) {
+        for (int y = 0; y < tex_h; y++) {
             uint32_t *row = (uint32_t *)((uint8_t *)pixels + (size_t)y * pitch);
-            for (int x = 0; x < SCENE_W; x++)
-                row[x] = scene_rgb(fb[y * SCENE_W + x]);
+            for (int x = 0; x < tex_w; x++)
+                row[x] = scene_rgb(fb[y * tex_w + x]);
         }
         SDL_UnlockTexture(tex);
     }
     SDL_RenderClear(ren);
     SDL_RenderTexture(ren, tex, NULL, NULL);
     SDL_RenderPresent(ren);
+}
+
+uint64_t window_ms(void)
+{
+    return SDL_GetTicks();
+}
+
+void window_sleep(uint32_t ms)
+{
+    SDL_Delay(ms);
 }
 
 void window_poll(Input *in)

@@ -3,13 +3,16 @@
 
 There is no speech track on the retail disc: the dialogue is interleaved with
 the video, chunk by chunk, and the `STAB` sample table in each chunk says where.
-An entry is sixteen bytes - offset, size, timestamp, type - and the two types
-that occur are:
+An entry is sixteen bytes - offset, size, timestamp, duration - and it is the
+**timestamp** that says which kind it is:
 
-* **type `$32`** - a video frame.  `offset` is where it starts, `timestamp`
-  counts in the film's own ticks, and bit 31 of the timestamp is a flag.
-* **type `1`** - an audio block.  Here `offset` is the **end**, so the block is
-  `[offset - size, offset)`.  Every one on this disc is 16,696 bytes.
+* an **audio block** carries a timestamp of all ones.  Here `offset` is the
+  **end**, so the block is `[offset - size, offset)`.  Every one on this disc
+  is 16,696 bytes.
+* anything else is a **video frame**: `offset` is where it starts, the
+  timestamp counts the film's own ticks, and bit 31 is clear on the frames a
+  player may start at.  The fourth field is then how long the frame is held -
+  50 ticks at a rate of 600, which is what made it look like a type.
 
 Both offsets are measured from the first byte after the sample table.
 
@@ -38,7 +41,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from filmls import films, describe          # noqa: E402
 
 RATE = 22252                                # audio_in, CINEPAK.INC
-TYPE_AUDIO = 1
+AUDIO_TS = -1                               # all ones, and only audio has it
 
 
 def film_audio(d, o):
@@ -60,7 +63,7 @@ def film_audio(d, o):
         data = stab + size
         for j in range(count):
             eo, es, ets, et = struct.unpack_from(">IIiI", d, stab + 16 + j * 16)
-            if et == TYPE_AUDIO:
+            if ets == AUDIO_TS:
                 out += d[data + eo - es:data + eo]
     return bytes(out), ticks, info
 

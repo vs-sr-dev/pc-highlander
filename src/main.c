@@ -28,6 +28,8 @@
 #include "game/act.h"
 #include "script/vm.h"
 #include "game/game.h"
+#include "media/film.h"
+#include "media/cinepak.h"
 #include "r3d/r3d.h"
 #include "platform/window.h"
 
@@ -48,9 +50,11 @@ typedef struct {
     R3dCull cull;
     int   list_scenes, list_models, list_objects, list_chars, list_sheets;
     int   alone;
+    int   film;
 } Args;
 
 static char path_pict[512], path_boot[512], path_t5[512], path_set[512];
+static char path_film[512];
 
 static void paths(const char *dir)
 {
@@ -58,6 +62,7 @@ static void paths(const char *dir)
     snprintf(path_boot, sizeof path_boot, "%s/track02_00004000.bin", dir);
     snprintf(path_t5,   sizeof path_t5,   "%s/track05_data.bin", dir);
     snprintf(path_set,  sizeof path_set,  "%s/track03_data.bin", dir);
+    snprintf(path_film, sizeof path_film, "%s/track07_1111.bin", dir);
 }
 
 /* ---- the manifest ------------------------------------------------- */
@@ -145,6 +150,20 @@ static int index_object(const Index *ix, const char *name, int *pos, int *face)
 }
 
 /* ---- output ------------------------------------------------------- */
+
+/* The films are decoded to 24-bit and only packed down to the framebuffer's
+ * R5 B5 G6 to be shown, so what goes out here is what the decoder produced -
+ * which is what makes it comparable, byte for byte, with filmdec.py. */
+static int write_ppm_rgb(const char *path, const uint8_t *rgb, int w, int h)
+{
+    FILE *f = fopen(path, "wb");
+    if (!f)
+        return 0;
+    fprintf(f, "P6\n%d %d\n255\n", w, h);
+    fwrite(rgb, 3, (size_t)w * h, f);
+    fclose(f);
+    return 1;
+}
 
 static int write_ppm(const char *path, const uint16_t *fb)
 {
@@ -945,6 +964,255 @@ static int check_script(void)
     return unknown == 0 && overrun == 0 && stray == 0 && total > 0;
 }
 
+/* ---- the films ------------------------------------------------------ */
+
+/* Track 7 is 36 Cinepak films back to back, and a script names one by the CD
+ * block it starts in.  What the viewer wants instead is "film 19", so the
+ * track is walked once for the inventory - which is also the check that the
+ * container reads the same way twice, since assets/films.tsv came out of
+ * filmls.py months before any of this. */
+#define FILM_MAX 64
+
+static int film_inventory(uint32_t *blocks)
+{
+    int n = film_scan(path_film, blocks, FILM_MAX);
+    if (n <= 0)
+        fprintf(stderr, "no films in %s: %s\n", path_film, film_error());
+    return n;
+}
+
+/* The film's own clock.  A sample's timestamp counts the film's ticks and its
+ * duration says how long the frame is held: 50 at a rate of 600, 2 at 24, and
+ * 2 and 3 alternating at 30 - which is 12 fps every time.  So the wait is the
+ * timestamp turned into milliseconds, not a constant. */
+static int play_film_block(const Args *a, uint32_t block, int windowed,
+                           long stop)
+{
+    Film fm;
+    if (!film_open(&fm, path_film, block)) {
+        fprintf(stderr, "%s\n", film_error());
+        return 0;
+    }
+
+    static Cinepak cv;
+    if (!cinepak_open(&cv, fm.width, fm.height)) {
+        fprintf(stderr, "the film at block %u is %dx%d, which is not a "
+                "Cinepak picture\n", block, fm.width, fm.height);
+        film_close(&fm);
+        return 0;
+    }
+    uint16_t *fb = malloc((size_t)fm.width * fm.height * sizeof *fb);
+    if (!fb) {
+        cinepak_close(&cv);
+        film_close(&fm);
+        return 0;
+    }
+
+    printf("the film at block %u: %s %dx%d, %d chunks, %u ticks at a rate of "
+           "%u = %.1f seconds\n", block, fm.codec, fm.width, fm.height,
+           fm.nchunks, fm.ticks, fm.rate,
+           fm.rate ? (double)fm.ticks / fm.rate : 0.0);
+
+    /* A film is 320x240 and the game draws 320x200, so the window changes
+     * shape for it - which is what the original did too, in video mode. */
+    if (windowed && !window_resize(fm.width, fm.height))
+        windowed = 0;
+
+    long frames = 0, errors = 0, audio = 0;
+    int quit = 0, shot = 0;
+    uint64_t t0 = windowed ? window_ms() : 0;
+    Input in = { 0 };           /* window_poll latches quit, so it is kept  */
+
+    for (int c = 0; c < fm.nchunks && !quit; c++) {
+        if (!film_chunk(&fm, c)) {
+            fprintf(stderr, "%s\n", film_error());
+            errors++;
+            break;
+        }
+        for (int i = 0; i < fm.nsamples && !quit; i++) {
+            const FilmSample *s = &fm.sample[i];
+            if (film_audio(s)) {
+                audio += s->size;       /* phase 7's, and already verified   */
+                continue;
+            }
+            int e = cinepak_frame(&cv, film_data(&fm, s), s->size);
+            if (e != CVID_OK) {
+                printf("  frame %ld: %s\n", frames, cinepak_why(e));
+                errors++;
+                continue;
+            }
+            if (a->shot && !shot && frames >= a->shot_at) {
+                if (write_ppm_rgb(a->shot, cv.rgb, cv.w, cv.h))
+                    printf("wrote %s: frame %ld\n", a->shot, frames);
+                else
+                    fprintf(stderr, "cannot write %s\n", a->shot);
+                shot = 1;
+                if (!windowed)
+                    quit = 1;           /* nothing else to do without a window */
+            }
+            if (windowed) {
+                /* Wait for the frame's own moment, then show it. */
+                uint64_t due = t0 + (uint64_t)film_ticks(s) * 1000 / fm.rate;
+                uint64_t now = window_ms();
+                if (due > now && due - now < 2000)
+                    window_sleep((uint32_t)(due - now));
+                cinepak_rgb16(&cv, fb);
+                window_present(fb);
+                window_poll(&in);
+                if (in.quit)
+                    quit = 1;
+            }
+            frames++;
+            if (stop > 0 && frames >= stop)
+                quit = 1;
+        }
+    }
+
+    uint64_t took = windowed ? window_ms() - t0 : 0;
+    printf("%ld frames, %ld of them whole pictures, %ld bytes of speech",
+           cv.frames, cv.keyframes, audio);
+    if (windowed && took)
+        printf(", played in %.1f s at %.1f fps", took / 1000.0,
+               frames * 1000.0 / (double)took);
+    printf("\n");
+
+    free(fb);
+    cinepak_close(&cv);
+    film_close(&fm);
+    return errors == 0;
+}
+
+/* `--film N`: the same film, named by where it sits on the track rather than
+ * by the block a script would give, and in a window of its own. */
+static int play_film(const Args *a, int which)
+{
+    uint32_t blocks[FILM_MAX];
+    int nfilms = film_inventory(blocks);
+    if (nfilms <= 0)
+        return 0;
+    if (which < 0 || which >= nfilms) {
+        fprintf(stderr, "film %d: the track has %d\n", which, nfilms);
+        return 0;
+    }
+    printf("film %d is ", which);
+
+    int windowed = !a->no_window;
+    if (windowed && !window_open_size("Highlander film", 320, 240,
+                                      a->scale > 0 ? a->scale : 2))
+        windowed = 0;
+    int ok = play_film_block(a, blocks[which], windowed, a->frames);
+    if (windowed)
+        window_close();
+    return ok;
+}
+
+/* Every frame of all 36 films, decoded.
+ *
+ * Three things have to come out at zero.  No decoder error - a Cinepak stream
+ * that is being read a byte out of step runs out of vectors before it runs out
+ * of picture, so drift shows up here rather than as a smear.  No chunk whose
+ * sample table does not account for its bytes - the container is ours and this
+ * is what says it is read whole.  And no frame whose timestamp disagrees with
+ * what the picture turned out to be: bit 31 is clear on exactly the frames a
+ * player may start at, which is a whole picture or the one after an audio
+ * block, and that can only be checked with a decoder in hand.
+ *
+ * The frame counts are for reading against filmdec.py's --frames, which walks
+ * the same container in Python. */
+static int check_film(void)
+{
+    uint32_t blocks[FILM_MAX];
+    int nfilms = film_inventory(blocks);
+    if (nfilms <= 0)
+        return 0;
+
+    static Cinepak cv;
+    long frames = 0, keys = 0, errors = 0, unaccounted = 0, resume = 0;
+    long long audio = 0;
+    double running = 0.0;
+
+    for (int n = 0; n < nfilms; n++) {
+        Film fm;
+        if (!film_open(&fm, path_film, blocks[n])) {
+            printf("film %2d: %s\n", n, film_error());
+            errors++;
+            continue;
+        }
+        if (strcmp(fm.codec, "cvid") != 0) {
+            printf("film %2d: codec %s\n", n, fm.codec);
+            errors++;
+        }
+        if (!cinepak_open(&cv, fm.width, fm.height)) {
+            printf("film %2d: %dx%d\n", n, fm.width, fm.height);
+            errors++;
+            film_close(&fm);
+            continue;
+        }
+
+        long fbad = 0, fslack = 0, fresume = 0, fblocks = 0;
+        long long fdur = 0;
+        int prev_audio = 0;
+
+        for (int c = 0; c < fm.nchunks; c++) {
+            if (!film_chunk(&fm, c)) {
+                printf("  film %2d: %s\n", n, film_error());
+                fbad++;
+                continue;
+            }
+            if (film_unaccounted(&fm) != 0) {
+                printf("  film %2d chunk %d: %u bytes no sample accounts for\n",
+                       n, c, film_unaccounted(&fm));
+                fslack++;
+            }
+            for (int i = 0; i < fm.nsamples; i++) {
+                const FilmSample *s = &fm.sample[i];
+                if (film_audio(s)) {
+                    audio += s->size;
+                    fblocks++;
+                    prev_audio = 1;
+                    continue;
+                }
+                int e = cinepak_frame(&cv, film_data(&fm, s), s->size);
+                if (e != CVID_OK) {
+                    printf("  film %2d chunk %d frame %ld: %s\n", n, c,
+                           cv.frames, cinepak_why(e));
+                    fbad++;
+                } else if (film_resume(s) != (cv.keyframe || prev_audio)) {
+                    fresume++;
+                }
+                fdur += s->dur;
+                prev_audio = 0;
+            }
+        }
+
+        double secs = fm.rate ? (double)fdur / fm.rate : 0.0;
+        printf("film %2d  block %6d  %3d chunks  %5ld frames  %4ld whole"
+               "  %4ld audio  %6.1f s  %4.1f fps%s\n", n, (int)blocks[n],
+               fm.nchunks, cv.frames, cv.keyframes, fblocks, secs,
+               secs > 0 ? cv.frames / secs : 0.0,
+               fbad || fslack || fresume ? "  <-" : "");
+
+        frames      += cv.frames;
+        keys        += cv.keyframes;
+        running     += secs;
+        errors      += fbad;
+        unaccounted += fslack;
+        resume      += fresume;
+        cinepak_close(&cv);
+        film_close(&fm);
+    }
+
+    printf("films: %d of them, %ld frames decoded, %ld whole pictures\n",
+           nfilms, frames, keys);
+    printf("  %ld decoder errors, %ld chunks their sample table does not "
+           "account for\n", errors, unaccounted);
+    printf("  %ld frames whose timestamp disagrees with the picture\n", resume);
+    printf("  %.0f seconds of picture at %.1f fps, and %lld bytes of speech, "
+           "which is %.0f seconds at 22,252 Hz\n", running,
+           running > 0 ? frames / running : 0.0, audio, audio / 22252.0);
+    return errors == 0 && unaccounted == 0 && resume == 0 && frames > 0;
+}
+
 /* ---- drawing a character ------------------------------------------- */
 
 static void draw_actor(R3dTarget *t, const Bundle *b, const ActorPose *pose,
@@ -999,7 +1267,10 @@ static void usage(void)
 "  --list-scenes | --list-models | --list-objects | --list-chars\n"
 "  --alone           leave the companion out of --drive\n"
 "  --list-sheets     the character sheets, and what each one wears\n"
-"  --check-mesh | --check-char | --check-doors | --check-follow\n");
+"  --film N          play one of the 36 Cinepak films, at its own 12 fps\n"
+"                    with --shot F.ppm --shot-at N it writes frame N out\n"
+"  --check-mesh | --check-char | --check-doors | --check-follow\n"
+"  --check-script | --check-film\n");
 }
 
 static int parse_triple(const char *s, int *out)
@@ -1067,7 +1338,7 @@ int main(int argc, char **argv)
                -1, 0, -1, 0, 0, 0, 0,
                0, {0,0,0}, 0, {0,0,0},
                R3D_CULL_NONE, 0, 0, 0, 0, 0,
-               0 };
+               0, -1 };
 
     for (int i = 1; i < argc; i++) {
         const char *v = i + 1 < argc ? argv[i + 1] : NULL;
@@ -1108,16 +1379,23 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--list-chars"))   a.list_chars = 1;
         else if (!strcmp(argv[i], "--list-sheets"))  a.list_sheets = 1;
         else if (!strcmp(argv[i], "--alone"))        a.alone = 1;
+        else if (!strcmp(argv[i], "--film")     && v) a.film = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--check-mesh")) { paths(a.tracks); return !check_mesh(); }
         else if (!strcmp(argv[i], "--check-char")) { paths(a.tracks); return !check_char(); }
         else if (!strcmp(argv[i], "--check-doors")) { paths(a.tracks); return !check_doors(); }
         else if (!strcmp(argv[i], "--check-follow")) { paths(a.tracks); return !check_follow(); }
         else if (!strcmp(argv[i], "--check-script")) { paths(a.tracks); return !check_script(); }
+        else if (!strcmp(argv[i], "--check-film")) { paths(a.tracks); return !check_film(); }
         else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) { usage(); return 0; }
         else { usage(); return argv[i][0] == '-' ? 1 : 0; }
     }
     paths(a.tracks);
     if (a.pad) parse_pad(a.pad);
+
+    /* A film is its own thing: it has no scene, no set and no character, and
+     * it runs on the film's clock rather than on the game's. */
+    if (a.film >= 0)
+        return !play_film(&a, a.film);
 
     Index ix;
     if (!index_open(&ix, a.manifest))
@@ -1710,9 +1988,18 @@ int main(int argc, char **argv)
         if (have_game) {
             game_frame(&game, a.pad ? pad_at(frame) : in.pad);
 
+            /* The handshake, and the whole of it: the machine has posted
+             * EVENT_TYPE_CINEPAK + 1 and will not run another command until
+             * it is cleared, so playing the film and clearing the event is
+             * all a host has to do.  The window changes shape for the film
+             * and back again afterwards. */
             if (game.want_film) {
                 printf("frame %4ld: a script asks for the film at block %u\n",
                        game.frame, game.want_film);
+                if (windowed) {
+                    play_film_block(&a, game.want_film, 1, 0);
+                    window_resize(SCENE_W, SCENE_H);
+                }
                 game.want_film = 0;
             }
             game.want_sample = -1;

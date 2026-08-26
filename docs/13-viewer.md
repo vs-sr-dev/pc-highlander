@@ -312,7 +312,12 @@ build/hlview --scene DUN1_CAM00 --char 0 --drive --alone   # ...without Ramirez
 build/hlview --check-doors | --check-follow           # the doorways; the follow
 build/hlview --list-scenes | --list-models | --list-objects | --list-chars
 build/hlview --list-sheets                            # the 40 character sheets
+build/hlview --film 19                                # a Cinepak film, 12 fps
+build/hlview --check-film                             # all 36 of them, decoded
 ```
+
+A film is 320x240 where the game draws 320x200, so the window changes shape for
+it and back again afterwards; `--scale` applies to both.
 
 `--shot FILE.ppm` writes a frame and `--shot-at N` writes it at frame `N`
 rather than the first, `--no-window` renders without opening one, so

@@ -3,7 +3,7 @@
 A native PC reimplementation of **Highlander: The Last of the MacLeods**
 (Lore Design Ltd. / Atari Corp., Jaguar CD, 1995).
 
-> **Status: phase 3 complete, phase 4 under way.** `src/` builds
+> **Status: phases 3 and 4 complete, phases 5 and 6 under way.** `src/` builds
 > `hlview`: an SDL3 window over a 320x200 RGB16 framebuffer that opens any of
 > the 672 backdrops by name, shows its Z-buffer, spins a model read straight
 > off the disc, and **composites that model into the scene, depth-tested against
@@ -116,6 +116,24 @@ A native PC reimplementation of **Highlander: The Last of the MacLeods**
 > and writes four collision triangle heights, one pair up and one pair down, so
 > **the walkway moves under the character**. A puzzle off the disc, on the
 > disc's own data.
+>
+> **And the films play.** Track 7 is 36 Cinepak films, 19 minutes of them, and
+> the hole in the port was exactly film-shaped: the container was read, the
+> speech inside it verified, and 32 of the 36 placed by the block offset a
+> script names. What was missing was one decoder, and the roadmap says to write
+> that rather than transcribe the disc's hand-written one, because `cvid` is a
+> published format. `hlview --check-film` decodes **every frame of all 36
+> films** — 13,922 of them — with zero decoder errors, zero chunks their sample
+> table does not account for, and every film at 12.0 fps. One frame decoded in C
+> and again in Python is byte for byte the same file. Reading the container
+> again for the decoder's sake corrected it twice over: the fourth field of a
+> sample entry is a **duration, not a type**, which is why six films whose tick
+> rate is not 600 had looked like they carried no video at all, and bit 31 of a
+> video timestamp marks **exactly** the frames a player could start at — a whole
+> picture, or the first frame after an audio block, on all 13,922. And a script
+> plays one: walk into `SHANR1` and the machine stops on frame 3, plays its
+> film, and carries on at frame 4, which is the original's own handshake and
+> nothing more.
 >
 > Two smaller things the disc gave up on the way. The camera footer's long at
 > +32 is not the constant session 3 took it for: it is the **set's own block on
@@ -255,6 +273,7 @@ python tools/world/worldx.py DIR/track02_00004000.bin --json assets/world.json
 # the 36 Cinepak films, and the audio interleaved in them
 python tools/cinepak/filmls.py DIR/track07_1111.bin --tsv
 python tools/cinepak/filmwav.py DIR/track07_1111.bin --out assets/filmaudio
+python tools/cinepak/filmdec.py DIR/track07_1111.bin --film 19 --frame 30 --ppm f.ppm
 
 # the 78 sound-effect bundles
 python tools/wave/wavex.py DIR/track06_data.bin --out assets/waves

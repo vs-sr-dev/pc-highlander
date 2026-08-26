@@ -13,6 +13,7 @@ anim/animx.py        character animations: list, JSON export
 text/textx.py        the localised item text, English / French / German
 cinepak/filmls.py    inventory of the films on the FMV track
 cinepak/filmwav.py   the films' interleaved audio, as .wav
+cinepak/filmdec.py   the films' video: a cvid decoder, and a frame as .ppm
 wave/wavex.py        the WAVE sound-effect bundles on tracks 5 and 6, as .wav
 m68k/dis68k.py       recursive-descent 68000 disassembler (capstone)
 m68k/jagsyms.py      Jaguar hardware registers and the Jaguar CD BIOS jump table

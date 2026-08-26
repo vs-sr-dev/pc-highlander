@@ -26,6 +26,10 @@ game/         scene.c  a backdrop slot: XOR key, colour, depth, camera footer
                        everything one game frame is, in the order it runs
 script/       vm.c     SCRIPT.GAS's interpreter: 83 opcodes, the process
                        table, and the world the commands reach into
+media/        film.c   the FILM container on track 7: seek to a block, find
+                       the sync, walk the chunks, hand out frames and speech
+              cinepak.c the cvid decoder - codebooks, 4x4 blocks, V1 and V4,
+                       inter and intra frames - into 24-bit and then RGB16
 r3d/          r3d.c    projection, matrices, scanline fill, Z-buffer
 platform/     window.c the only file that knows SDL exists
 util/         io.c     whole-file reads and big-endian accessors
@@ -53,6 +57,10 @@ build/hlview --list-sheets                         the sheets, and what each wea
 build/hlview --scene DUN1_CAM00 --char 0 --drive   ...and Ramirez follows you
 build/hlview --check-follow                        the bearing, and the follow
 build/hlview --check-script                        every script on the disc, run
+build/hlview --film 19                             a film, at its own 12 fps
+build/hlview --film 19 --shot-at 30 --shot f.ppm --no-window
+build/hlview --check-film                          every frame of all 36, decoded
+build/hlview --scene SHANR1_CAM00 --char 0 --drive  ...and its script plays one
 build/hlview --help
 ```
 

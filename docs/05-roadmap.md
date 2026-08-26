@@ -31,6 +31,8 @@ limits. Read it to understand *what* it does, do not transcribe it:
 * the triple scene buffer with prefetch — on PC every asset fits in RAM;
 * the CD BIOS and Cinepak library disassemblies (`CDINIT*.GAS`, `CINELIST.GAS`);
 * the hand-written Cinepak decoder: FILM container plus a standard codec.
+  Done, and it went exactly that way — the container was read off the disc and
+  the codec written from the published format ([09-text-and-fmv.md](09-text-and-fmv.md) §9.5).
 
 What **must** be reproduced faithfully: integer arithmetic and fixed-point
 formats (s15.0 / s1.14 / 8.8), the ordering of operations in the game loop, the
@@ -201,16 +203,31 @@ loop now rather than a branch inside the viewer, and the sewers' sluice moves
 the collision mesh under the player because `SE`'s own script says so
 ([11-script-vm.md](11-script-vm.md) 11.10).
 
-Next here: **the films.** The container is fully read (9.2) and the audio
-reassembly is verified (9.3); what is missing is one `cvid` decoder, which 5.2
-already says to write rather than transcribe. The loop's handshake is the
-integration - a script posts `EVENT_TYPE_CINEPAK + 1` and runs no further
-command until it is cleared - so "play it, then clear the event" is all of it.
-After that: the menu, and the state that survives a `reset`.
+And **the films play.** `src/media/film.c` is the container — seek to the block
+a script names, find the `'1111'` sync, walk the chunks — and
+`src/media/cinepak.c` is a `cvid` decoder written from the published format, as
+5.2 asks. `hlview --check-film` decodes **every frame of all 36 films**: 13,922
+frames, zero decoder errors, zero chunks their sample table does not account
+for, every film at 12.0 fps. One frame decoded in C and in Python is byte for
+byte the same file, and the frame counts agree with `filmdec.py`
+([09-text-and-fmv.md](09-text-and-fmv.md) §9.5).
+
+The integration is the handshake and nothing more: a script posts
+`EVENT_TYPE_CINEPAK + 1` and runs no further command until it is cleared, so
+the host plays and clears. `--drive` into `SHANR1` and its own script stops the
+game on frame 3, plays its film, and carries on at frame 4.
+
+Next here: the menu, and the state that survives a `reset`.
 
 ### Phase 7 — The game speaks
 16-voice PCM mixer, Red Book playback from the image's audio track, synchronised
 Cinepak playback, three separate volumes.
+
+The film half of that is already read and handed out: `film.c` gives the caller
+each audio block of a chunk in order, signed 8-bit mono at 22,252 Hz, and the
+reassembly was verified in phase 2 (§9.3). What is missing is a mixer to put it
+into, and the clock to hang it on — the films run on their own timestamps now,
+which is what audio will want to be locked to rather than the other way round.
 
 ### Phase 8 — Polish
 Save games, pause menu, HUD and life bar, font, credits screen, NTSC/PAL
