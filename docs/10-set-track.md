@@ -26,23 +26,34 @@ that proves it, because its `SceneOffset` is 64 rather than 52 and the extra
 twelve bytes are one more record of the same shape. Forty-six sets carry two,
 `MENU` and `LANG` carry three, and `H` carries one.
 
-Each record is three longs, `4, block, size`:
+Each record is three longs, and it is the same 8-byte file record the character
+sheets carry (§12.7) with a size on the end:
 
 ```
-CA      4, $70,  0          4, $2A0, $10000
-DUN1    4, $0,   0          4, $460, $10000
-TENT1   4, $0,   0          4, $7A8, $10000
-MENU    4, $620, $10000     4, $818, $200000     4, 0, 0
++0  .w  entry position          0 throughout
++2  .w  data type               4 in 93 of the 97 records on the disc
++4  .l  block offset
++8  .l  size                    0, $10000, or $200000 for the menus
 ```
 
-Every `block` is a multiple of 56, and track 3 is exactly `48 * 56` blocks long,
-so they are set slots. The first record takes one of only five values across the
-disc - slots 0, 1, 2, 3 and 28 - and groups the sets into families: the whole
-`CNY` chain names slot 2, the `C`/`D` sets name slot 1, the dungeons and tents
-name slot 0. The second is nearly unique per set. They read as a **load list**,
-which is what the leading `4` and the trailing `$10000` suggest, and what they
-name exactly is still open - but "24 bytes, purpose unknown" is not what is
-there.
+```
+CA      0,4,$70,  0        0,4,$2A0, $10000
+DUN1    0,4,$0,   0        0,4,$460, $10000
+TENT1   0,4,$0,   0        0,4,$7A8, $10000
+MENU    0,4,$620, $10000   0,4,$818, $200000    0,4,0, 0
+```
+
+**They are the set's sound bundles.** Every block is a multiple of 56, and track
+6 is 38 slots of 56 blocks — and reading four bytes into each block the record
+names gives the tag `WAVE` for **all 97 records, without exception**. Thirty-seven
+of the thirty-eight slots are named by some set; only slot 10 is never asked for.
+
+The shape then reads itself. Every set names **one of five shared banks** — slots
+0, 1, 2, 3 and 28, which group the sets into families: seventeen sets take slot 0,
+eleven take slot 3, ten take slot 2, eight take slot 1, and the two menus take
+28 — and then **its own**, at size $10000. The retail data types were renumbered
+when thirteen collapsed into eight (§6.5): type 3 is the character track, which
+is what the sheets' own file records use, and type 4 is this one.
 
 ## 10.2 Scene table — and the scene id
 

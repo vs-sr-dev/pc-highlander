@@ -153,25 +153,70 @@ would hope for.
 With `LANG` at 31 (§11.6), the sets with no July counterpart are groups **19, 27
 and 28**.
 
-## 12.7 Still open
+## 12.7 What loads what
+
+`SHEET.S` is the sheets' own source and it says the run at `cshFileOff` is a
+table of 8-byte records — `entry position .w, data type .w, block offset .l` —
+where the position counts longs **from `.models`**. That table is `dc.w`/`dc.l`
+data, so unlike the long array it is in the retail binary and can simply be
+read. Thirty-three records over the forty sheets, and every one of them is data
+type 3.
+
+**Track 5 is 33 slots of 56 blocks.** The thirty-three block offsets are 0, 56,
+112, ... 1792 — all distinct, all multiples of 56, `33 * 56 = 1848` and the track
+is 1849 blocks long. And they check out against the models: bundle 1 sits at
+byte `$101404`, which is block 448 plus the four bytes of its length prefix, and
+sheet 2's record says block 448.
+
+**Even slot, odd slot.** The two records a full character carries land in
+different places, and resolving the positions says which:
+
+```
+sheet  1  m4..18 a19..48 misc49..53   blk    0 -> models[0]   blk   56 -> misc[1]
+sheet  2  m4..18 a19..46 misc47..51   blk  448 -> models[0]   blk  504 -> misc[1]
+sheet 22  m4..4  a5..32  misc33..37   blk  112 -> anims[0]    blk  168 -> misc[1]
+```
+
+The even slot is the bundle — fifteen models and the animations — and the odd
+slot begins `WAVE`: it is the sound bundle, which July loaded from a separate
+`SAMPLEDATA` track and retail moved in beside the character. That is one of the
+five data types the retail build collapsed (§6.5) seen from the other end.
+
+**And it is checked by a number neither side controls.** Counting the animation
+records that actually fall inside each slot and comparing with the `cshAnimNum`
+the sheet declares agrees for **all 24 sheets that carry a file record**: 30 for
+Quentin, 28 for the five other full characters and the three weapons, 4 for five
+sheets, 3 for three, 1 for two, 0 for the rest. The odd slots hold no animations
+at all, as a `WAVE` bundle should not.
+
+**The weapons and the items do not load a model, because they already have one.**
+Sheets 22 to 39 have `models[0]` **filled in in the binary**, and every one of the
+eighteen addresses is exactly one of the nineteen item models §3.3 found there —
+$EBA0, $EE98, $F848, $10140 and so on, one sheet each, none shared, only model 0
+at $E1F8 unclaimed. So a weapon sheet's file record loads only its *animation*
+bank (its first record lands on `anims[0]`, not `models[0]`), and an item sheet
+loads nothing at all.
+
+That also names some of the item models, through the world records that use each
+sheet: model 6 is the **wine bottle** — which is `boot:6`, the one phase 3 matched
+facet-for-facet against `MERLOT79.INC` — model 5 the **loaf**, 4 the **cheese**,
+2 the **gas gun**, 7 the **key** and 8 the **locket**.
+
+**What is still not loaded by anything is `misc[0]`**, and `misc[0]` is the one
+`AICTRL.GAS` reads as the joypad logic table (§14.8). No file record fills it and
+no sheet has it pre-filled, which is why scanning the data tracks for the
+structure `ActionCode` reads turns up nothing: on the retail disc that table is
+resident, written by code rather than loaded, and finding the code that writes it
+is what the question has been narrowed to.
+
+## 12.8 Still open
 
 * ~~The long arrays in the character sheets are zero in the binary and filled
   from the CD, so nothing statically links a sheet to a model bundle on track 5.~~
-  **Settled from the source.** `SHEET.S` is the sheets' own source and the run at
-  `cshFileOff` is a table of 8-byte records, `entry position .w, data type .w,
-  block offset .l`, which says exactly which CD blob fills which slot of the long
-  array. Quentin's reads: the models from `MODELDATA` at `BO_MODEL_QUENTIN`, then
-  animations into slots 0, 14 and 28 from `BO_ANIM_QUENTIN_HAND1..3`, then
-  `CHARDATA` at `BO_LOGICS_1` and a sound bundle. So his thirty animations are
-  three loads of 14, 14 and 2, and the sword and gun banks are not his at all -
-  they live on the weapon's sheet, which is what `AICTRL.GAS` reaches for first
-  when the player is armed. That is session 8's "four banks, 114 in all". The
-  `.w` data type is `VIDSTUFF.INC`'s: 1 `CHARDATA` ("jakes joypad logics"),
-  2 `MODELDATA`, 3 `ANIMDATA`, 4 `SCENEDATA`, 5 `SAMPLEDATA`, 6 `SETDATA`,
-  7 `REDDATA`, 8 `BITMAPDATA`, 9 `HIRESDATA` ("640 x 400 pics"), 10 `WSCSDATA`,
-  11 `CINEDATA`, 12 `RUNDATA`. The block offsets are July's and the retail disc
-  moved them (6.5), so the table gives the shape and the names, not the
-  addresses.
+  **Settled, and §12.7 is the answer.** Both halves of that sentence turn out to
+  be wrong: the file table that does the linking is in the binary, and eighteen
+  of the sheets have their model pointer filled in already.
+
 * `cshBehaviour` takes eleven distinct values — 0, 10, 20, 30, 40, 250, 1536, 1792,
   2304, 2816, 3840 — and is presumably an AI selector; `AICTRL.GAS` is the place
   to look.

@@ -330,9 +330,9 @@ the player saw. `PRI_CAM00` looks at that doorway from about 2,200 units away,
 where the projection puts 59 units of error at 6.6 pixels and a 414-unit
 character at 46 pixels tall. Ankle deep, on a 320x200 screen.
 
-**Two things ruled out on the way.** The 24 bytes after the set header are a
-load list and not a datum - §10.1, where they are now decoded as far as their
-shape. And the projection constants are not the cause: fitting them from
+**Two things ruled out on the way.** The 24 bytes after the set header are the
+set's sound-bundle load list and not a datum - §10.1, where they are now decoded
+outright. And the projection constants are not the cause: fitting them from
 camera-to-camera agreement alone, over 220 distinct cameras in seven sets, leaves
 `XSCALE` and the principal column exactly where the viewer has them and `YSCALE`
 flat from 236 to 261. The principal *row* appears on that criterion to want 90

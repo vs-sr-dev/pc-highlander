@@ -67,6 +67,17 @@ A native PC reimplementation of **Highlander: The Last of the MacLeods**
 > plane and nothing else, and every ground height in the game is an integer
 > somebody typed in by eye.
 >
+> **And three tracks turned out to be slot tables.** The character sheets' file
+> lists are in the binary after all — `entry position, data type, block offset` —
+> and their thirty-three records name track 5's **33 slots of 56 blocks**: the
+> even slot is a character's fifteen models and his animations, the odd one is a
+> `WAVE` bundle of his sounds. The animation count in each slot matches the count
+> the sheet declares for all 24 sheets that carry a record. The weapons and the
+> items load no model because eighteen of the nineteen models in the binary are
+> already pointed at from the sheets, one each. And the "24 unexplained bytes"
+> after every set header are the same kind of record: **the set's sound bundles**,
+> on track 6's 38 slots of 56 blocks, tagged `WAVE` in all 97 of them.
+>
 > Two smaller things the disc gave up on the way. The camera footer's long at
 > +32 is not the constant session 3 took it for: it is the **set's own block on
 > track 3**, which names the set a view belongs to outright, and it checks out

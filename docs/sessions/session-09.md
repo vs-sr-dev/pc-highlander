@@ -55,10 +55,14 @@ that disagreement is the answer.
 pixels tall.
 
 Two things were ruled out on the way, and both are worth having. The **24 bytes
-after the set header** are not 24 bytes: they are a list of 12-byte records that
-ends where `SceneOffset` points, and `MENU` proves it by having three of them and
-a `SceneOffset` of 64. Each is `4, block, size` with every block a multiple of
-56, and track 3 is exactly 48 × 56 blocks — a load list, not a datum. And the
+after the set header** are not 24 bytes and are not unexplained: they are a list
+of 12-byte records ending where `SceneOffset` points — `MENU` proves the length
+varies by having three and a `SceneOffset` of 64 — and each is the same file
+record the character sheets carry, `entry .w, data type .w, block .l`, with a
+size on the end. **They are the set's sound bundles.** Every block is a multiple
+of 56, track 6 is 38 slots of 56 blocks, and reading four bytes into every block
+all 97 records name gives the tag `WAVE`, without exception. Each set takes one
+of five shared banks and then its own. And the
 **projection constants** are not the cause: fitting them from camera-to-camera
 agreement alone over 220 cameras leaves `XSCALE` and the principal column where
 the viewer has them and `YSCALE` flat from 236 to 261. The principal *row* looks
@@ -188,33 +192,68 @@ off the floor; with the index read as the word it is, none do.
 → [10-set-track.md](../10-set-track.md) 10.3,
 [14-characters.md](../14-characters.md) 14.9
 
-## 5. What `SHEET.S` closed for free
+## 5. What loads what, which closes 12.7 and narrows the last question
 
-[12-world-and-sheets.md](../12-world-and-sheets.md) 12.7's first open item — that
-nothing statically links a character sheet to a bundle on track 5 — is settled by
-the sheets' own source. The run at `cshFileOff` is a table of 8-byte records,
-`entry position .w, data type .w, block offset .l`. Quentin's says: models from
-`MODELDATA`, then animations into slots 0, 14 and 28 from
-`BO_ANIM_QUENTIN_HAND1..3`, then `CHARDATA` at `BO_LOGICS_1`, then a sound
-bundle. So his thirty animations are three loads of 14, 14 and 2, and the sword
-and gun banks are not his at all — they live on the weapon's sheet, which is what
-`AICTRL.GAS` reaches for first when the player is armed. That is session 8's
-"four banks, 114 in all", explained.
+`SHEET.S` says the run at `cshFileOff` is a table of 8-byte records — `entry
+position .w, data type .w, block offset .l` — and unlike the long array beside
+it, that table is `dc.w`/`dc.l` data, so **it is in the retail binary and can
+simply be read**. Doing so settles
+[12-world-and-sheets.md](../12-world-and-sheets.md) 12.7's first open item, and
+both halves of how it was written turn out to be wrong.
 
-`VIDSTUFF.INC` names all thirteen data types, one of which is `HIRESDATA`,
-"640 x 400 pics" — a lead for track 9 rather than an answer, since the retail
-build collapsed thirteen types into eight and track 9's payload measures 7.996
-bits per byte.
+**Track 5 is 33 slots of 56 blocks.** The thirty-three records name blocks 0, 56,
+112 … 1792 — all distinct, all multiples of 56, `33 × 56 = 1848` against a track
+of 1849 blocks. They check against the models: bundle 1 sits at byte `$101404`,
+which is block 448 plus the four bytes of its length prefix, and sheet 2's record
+says 448.
+
+**Even slot is the character, odd slot is his sounds.** Resolving each record's
+position against the sheet's own layout puts the even slot in `models[0]` —
+fifteen models and the animations — and the odd one in `misc[1]`, where the data
+begins `WAVE`. July loaded that from a separate `SAMPLEDATA` track; retail moved
+it in beside the character, which is one of the five collapsed data types (6.5)
+seen from the other end.
+
+**Checked by a number neither side controls:** counting the animation records
+that actually fall inside each slot and comparing with the `cshAnimNum` the sheet
+declares agrees for **all 24 sheets that carry a record** — 30 for Quentin, 28
+for the five other full characters and the three weapons, 4 for five sheets, 3
+for three, 1 for two, 0 for the rest, and none at all in the `WAVE` slots.
+
+**The weapons and items load no model because they already have one.** Sheets 22
+to 39 have `models[0]` filled in *in the binary*, and each of the eighteen
+addresses is exactly one of the nineteen item models §3.3 found there — one sheet
+each, none shared, only model 0 unclaimed. So a weapon sheet's first record lands
+on `anims[0]` rather than `models[0]`: only its animation bank comes off the CD.
+Which also names some of the models through the world records that use each
+sheet — model 6 is the **wine bottle**, and `boot:6` is what the viewer has been
+calling it since phase 3.
+
+So session 8's "Quentin's body carries four banks, 114 in all, where his sheet
+declares 30" is explained: **they are not all his.** He gets 30; slots 2 through
+7 belong to the sword, the gun and the third weapon, and `AICTRL.GAS` reaches for
+the weapon's own sheet first when the player is armed.
+
+**And the one thing nothing loads is `misc[0]`** — which is precisely the joypad
+logic table. No file record fills it and no sheet has it pre-filled, which is why
+scanning every data track for the structure `ActionCode` reads finds nothing: on
+the retail disc that table is resident and written by code. The question is no
+longer "where on the disc" but "which routine writes it", which is a much smaller
+search.
+
+`VIDSTUFF.INC` names all thirteen data types on the way past, one of which is
+`HIRESDATA`, "640 x 400 pics" — a lead for track 9 rather than an answer, since
+the retail build collapsed thirteen types into eight and track 9's payload
+measures 7.996 bits per byte.
 
 ---
 
 ## Still open
 
-* **The logic tables.** Five CD files, named and described in `DATA.INC`, not
-  located on the retail disc. Until they are, the joypad→animation table is ours.
+* **The logic tables.** July loaded them from CD; retail does not — nothing
+  fills `misc[0]`, so the table is resident and written by code. Finding that
+  code is the remaining search. Until then the joypad→animation table is ours.
 * **Track 9**, with `HIRESDATA` as a new suspect.
-* The load-list records after the set header: the shape is settled, what the
-  blocks name is not.
 * Unchanged: `ZMODELT`'s sense; the non-uniform `face` elevation on the items;
   the three unreferenced films; the 125 unnamed world records; the seventeen
   unnamed GPU modules; the `SLP` payload; `cshBehaviour`; `gvar[0..2]`.
@@ -223,14 +262,14 @@ bits per byte.
 
 1. **Ramirez.** The init table has been carrying his arrival point in bit 0 of
    every doorway all along, `AICTRL.GAS` has an `aiFollowPlayer` command, and
-   `cshBehaviour` is the selector 12.7 has been waiting to identify. A second
+   `cshBehaviour` is the selector 12.8 has been waiting to identify. A second
    character who follows is the next thing that makes it a game.
 2. **The scripts, running.** The VM is read (11) and every set carries one at
    `ScriptOffset`; the doorways now change sets, and a script is what is supposed
    to be watching when they do.
-3. **The logic tables**, if an hour turns them up. The `.MAP`'s `SCENES` block
-   gives `CACHE_SCENE0` and `CACHE_SCENE1` per view, which is a second thing the
-   CD layout has to explain and might be found in the same place.
+3. **The logic tables**, now a code search rather than a disc search: find what
+   writes `misc[0]` of a character sheet. `CSHCODE.GAS` is the file in the dump
+   whose name suggests it.
 
 Still worth an hour whenever there is one: **the frame comparator** — render a
 scene, run the same scene under an emulator, diff. This session spent most of a
