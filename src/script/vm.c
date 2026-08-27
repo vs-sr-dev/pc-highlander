@@ -282,6 +282,7 @@ void vm_init(Vm *vm, const uint8_t *world, const uint8_t *main, int main_len)
     vm->main_len   = main_len;
     vm->script_set = -1;
     vm->used       = -1;
+    vm->currws     = -1;
     vm->seed       = 1;
     vm->frametime  = 256 / 20;  /* the animations' own rate; `pause` counts in
                                    256ths of a second and this is the amount
@@ -730,10 +731,12 @@ static int step(Vm *vm, int slot)
                                           ? &vm->act->a[p->r[reg]] : NULL);
         /* wstParent holds an address in the original, so the comparison is
          * "is this entry's owner the selected character's world record".  Our
-         * parents are addresses off the disc too, so compare on the index the
-         * address resolves to - which the host fills in as a plain index. */
+         * parents are addresses off the disc and stay that way, so resolve
+         * one to an index before comparing.  Zero has to stay distinct from
+         * record 0, which is the player: an unowned thing is not his. */
         int32_t owner = ws_read(vm, (int)uoper, 8, 2);
-        p->flags = flags_sub(owner, a ? a->world : 0);
+        p->flags = flags_sub(ws_owner_of((uint32_t)owner),
+                             a ? a->world : -1);
         return 1;
     }
 
@@ -882,9 +885,15 @@ static int step(Vm *vm, int slot)
          * on the disc uses the opcode. */
         return 1;
 
-    case 71:                                    /* pickup */
-        vm->scriptscene = uoper;
-        vm->scriptevent = (uint16_t)(EV_RESTOREITEM + 1);
+    case 71:                                    /* pickup - SCRIPT.GAS's
+                                                   `force_pickup`            */
+        /* It posts no event and waits for nothing.  All it does is write the
+         * world record it names into `currws`, and that record's model into
+         * `currmod`; the *taking* happens in COLLECT, gated on the world-state
+         * bit `WSB_SCRIPT_PICKUP` - "new one to let me pick things up
+         * automatically", says ROBSWSB.INC of the pair.  This was posting an
+         * EVENT_TYPE_RESTOREITEM, which belongs to `restore` and not here. */
+        vm->currws = (int)uoper < WS_COUNT ? (int)uoper : -1;
         return 1;
 
     case 73:                                    /* poke */

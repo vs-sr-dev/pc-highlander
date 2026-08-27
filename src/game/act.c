@@ -7,7 +7,8 @@
 void act_init(ActTable *t)
 {
     memset(t, 0, sizeof *t);
-    t->player = -1;
+    t->player   = -1;
+    t->instpick = -1;
     for (int i = 0; i < ACT_MAX; i++) {
         t->a[i].world = -1;
         t->a[i].sheet = -1;
@@ -18,9 +19,22 @@ void act_init(ActTable *t)
 int act_add(ActTable *t, int world, int sheet, int cast,
             const Anim *anims, int nanims, const LogicTable *logic)
 {
-    if (t->n >= ACT_MAX)
-        return -1;
-    Act *a = &t->a[t->n];
+    /* The original's `.actloop` walks the table for a zero entry and takes it,
+     * so a slot a dropped object or a departed set gave back is the next one
+     * used.  `t->n` stays the high-water mark, because that is what every
+     * loop over the table counts to. */
+    int i = -1;
+    for (int k = 0; k < t->n; k++)
+        if (!(t->a[k].flags & ACT_CREATED)) {
+            i = k;
+            break;
+        }
+    if (i < 0) {
+        if (t->n >= ACT_MAX)
+            return -1;
+        i = t->n++;
+    }
+    Act *a = &t->a[i];
     memset(a, 0, sizeof *a);
     a->world  = world;
     a->sheet  = sheet;
@@ -32,7 +46,20 @@ int act_add(ActTable *t, int world, int sheet, int cast,
     a->actor.tri = -1;
     control_init(&a->ctl);
     ai_init(&a->ai, AI_NOP);
-    return t->n++;
+    return i;
+}
+
+void act_free(ActTable *t, int i)
+{
+    if (i < 0 || i >= t->n)
+        return;
+    memset(&t->a[i], 0, sizeof t->a[i]);
+    t->a[i].world = -1;
+    t->a[i].sheet = -1;
+    t->a[i].cast  = -1;
+    t->a[i].actor.tri = -1;
+    if (t->player == i)
+        t->player = -1;
 }
 
 int act_of_world(const ActTable *t, int world)
@@ -74,8 +101,12 @@ static void hit_control(Act *a, int alive)
 /* `DeadControl`.  Nothing is pressed, and once the animation that killed him
  * has run out his radius goes to zero - which is what takes a body out of the
  * collision entirely, since COMBAT.GAS drops any pair where either radius is
- * zero.  The original goes on from there to drop whatever he was carrying into
- * the world as new characters; that is inventory, and it is not here. */
+ * zero.  The original's own test is the same one: it reads the radius, and a
+ * radius already zero means "dead, instead of dying" and there is nothing left
+ * to do.  So the whole of the rest of the routine happens exactly once, on
+ * that frame, and the rest of it is the drop - every world record whose parent
+ * is him becomes a body standing where he fell.  `died` is that one frame;
+ * game.c does the dropping, because it is the half that needs the world. */
 static void dead_control(Act *a, uint8_t *ws)
 {
     a->ctl.pad = 0;
@@ -85,6 +116,7 @@ static void dead_control(Act *a, uint8_t *ws)
     if (p[0] || p[1]) {
         p[0] = p[1] = 0;
         a->actor.radius = 0;
+        a->died = 1;
     }
 }
 
@@ -109,7 +141,11 @@ static void act_action(Act *a, const Set *s)
 
     control_action(&a->ctl, a->logic, playing);
     if (a->ctl.restarted) {
-        int k = a->ctl.anim;
+        /* The table names an animation; which one that *is* depends on what
+         * he is holding.  `.weapon_action` looks the number up in `animsheet`
+         * before his own sheet, and since the player carries every bank in
+         * one bundle that comes to adding an offset. */
+        int k = a->ctl.anim + a->bank;
         if (k >= 0 && k < a->nanims) {
             const Anim *pick = &a->anims[k];
             if (pick != a->anim) {

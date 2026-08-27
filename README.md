@@ -3,13 +3,36 @@
 A native PC reimplementation of **Highlander: The Last of the MacLeods**
 (Lore Design Ltd. / Atari Corp., Jaguar CD, 1995).
 
-> **Status: phases 3 and 4 complete, phases 5 and 6 under way.** `src/` builds
+> **Status: phases 3 and 4 complete, phase 5 all but a projectile, phase 6
+> under way.** `src/` builds
 > `hlview`: an SDL3 window over a 320x200 RGB16 framebuffer that opens any of
 > the 672 backdrops by name, shows its Z-buffer, spins a model read straight
 > off the disc, and **composites that model into the scene, depth-tested against
 > the backdrop's own Z half.** A wine bottle standing on a tent floor keeps
 > every one of its pixels in the open, 36 of 77 with the tent pole across it,
 > and none at all behind the pole.
+>
+> **A set now fills itself, and you can pick things up.** `SETLOGIC.GAS`'s
+> `GetSet` and `SCNLOGIC.GAS`'s four tests decide who is in a set: every world
+> record with a character sheet whose `wstSet` matches the group on screen, that
+> is not deactivated, is **not in somebody's pocket**, and is within $4000 of the
+> camera. So `DUN1` has two Hunters and three things on the floor because the
+> table says so, not because a flag put them there.
+>
+> And `COLLECT.GAS` is in: `instpick`, the modal inventory screen over a
+> half-brightness backdrop, the five buttons its own comment block specifies,
+> and `DeadControl` emptying a dead man's pockets onto the floor — which is how
+> most of the game's items arrive, since **49 of the 99 collectables start in
+> somebody's keeping and none of those somebodies is Quentin**. There is no
+> inventory list anywhere in the game: `wstParent` is who owns you, and carrying
+> something *is* that field pointing at you
+> ([docs/16-inventory.md](docs/16-inventory.md)).
+>
+> `hlview --check-inventory` walks all 48 groups: 144 bodies with no record
+> claimed twice, 55 collectables that each offer themselves on exactly one frame
+> and go into the pocket, 51 that come back out onto the floor at his feet, four
+> that decline because their own script has raised `WSB_COLLECT_PREVENT`, and 54
+> objects falling out of 34 corpses, every one standing where he fell.
 >
 > **And it now walks a character around a set.** Fifteen pieces off track 5,
 > chained through the origin points that turn out to be the skeleton, posed by

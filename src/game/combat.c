@@ -124,6 +124,17 @@ void combat_frame(ActTable *t, uint8_t *ws)
             if ((A->ctl.stance | B->ctl.stance) & FSA_SHIELD)
                 duel = 0;
 
+            /* Is exactly one of them a thing rather than a person?  The
+             * original combines the two flag bytes with `xor` and tests the
+             * one bit, which says "one of them and not both" in a single
+             * instruction and is why two items in a heap are still just two
+             * bodies to each other. */
+            int coll = ((ws_byte(ws, A->world, WS_FLAGS) & WST_COLLECTABLE) != 0)
+                     ^ ((ws_byte(ws, B->world, WS_FLAGS) & WST_COLLECTABLE) != 0);
+            int item = coll
+                     ? (ws_byte(ws, A->world, WS_FLAGS) & WST_COLLECTABLE ? i : j)
+                     : -1;
+
             int32_t dx = A->actor.x - B->actor.x;
             int32_t dz = A->actor.z - B->actor.z;
             int32_t dist = isqrt32(dx * dx + dz * dz);
@@ -139,7 +150,7 @@ void combat_frame(ActTable *t, uint8_t *ws)
             int att1 = 0, att2 = 0;     /* damage owed to each of them       */
             int land1 = 0, land2 = 0;   /* what actually reached him         */
 
-            if (duel) {
+            if (duel && !coll) {
                 Blow b1 = blow_of(A), b2 = blow_of(B);
                 if (b1.hit || b2.hit)
                     combat_stats.swings++;
@@ -173,7 +184,7 @@ void combat_frame(ActTable *t, uint8_t *ws)
                 { B, att2, att1, land1, knock2 },
                 { A, att1, att2, land2, knock1 },
             };
-            for (int k = 0; duel && k < 2; k++) {
+            for (int k = 0; duel && !coll && k < 2; k++) {
                 Act *w = side[k].who;
                 if (side[k].dmg >= 1) {
                     int life = ws_byte(ws, w->world, WS_LIFE) - side[k].dmg;
@@ -192,6 +203,24 @@ void combat_frame(ActTable *t, uint8_t *ws)
                     w->ctl.stance |= FSA_SHIELD;
                     combat_stats.parries++;
                 }
+            }
+
+            /* The pickup, which stands where the physical collision would.
+             * An item and a person never push on each other: whichever way
+             * this goes, the pair is finished here. */
+            if (coll) {
+                if (!duel)
+                    continue;               /* only the player picks things up */
+                if (dist >= rad1 + rad2) {
+                    t->a[item].picked = 0;  /* `.miss`: he has stepped out of it */
+                    continue;
+                }
+                if (t->instpick < 0 && !t->a[item].picked) {
+                    t->a[item].picked = 1;
+                    t->instpick = item;
+                    combat_stats.offered++;
+                }
+                continue;
             }
 
             /* The bodies themselves.  Each one's strength pushes on the other,

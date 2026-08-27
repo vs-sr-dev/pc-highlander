@@ -33,6 +33,13 @@
 /* actFlags, from LOGICS.INC. */
 #define ACT_CREATED     (1u << 0)
 #define ACT_CONTROLLED  (1u << 1)
+/* Ours, and only ours: this record was put here by `ParseWST` reading the world
+ * table, so `ParseACT` and `SCNLOGIC` may take it away again.  The original has
+ * no such bit because it has no other way in - every character it ever has
+ * comes off the world table.  A harness that stands somebody in a set by hand
+ * has, and the two must not be confused: world record 1, Ramirez, ships
+ * `WSTDeactivated` and would be culled the moment he was looked at. */
+#define ACT_FROM_WORLD  (1u << 8)
 
 typedef struct {
     int         world;          /* the world record he is, -1 if free       */
@@ -43,12 +50,26 @@ typedef struct {
                                    attack, 1 defend, 2 pause                */
     uint8_t     knock;          /* citFlags KNOCKBACK1/2: which way the last
                                    blow came from - 0 back, 2 forward       */
+    uint8_t     died;           /* set on the one frame `DeadControl` takes
+                                   his radius away, which is where it drops
+                                   what he was carrying (collect.h)          */
+    uint8_t     picked;         /* citFlags PICKUP: he is standing inside a
+                                   collectable's circle right now.  It is set
+                                   on the frame he arrives and cleared the
+                                   frame he leaves, and it is what stops one
+                                   item offering itself twice over            */
     Control     ctl;            /* actJoypad, actAction, actCount, citStance */
     Ai          ai;             /* actAICommand and actAIData1..4           */
     Actor       actor;          /* the CIT: where he is and what he does    */
     const Anim *anim;           /* citAnimate: the one playing, or NULL     */
     const Anim *anims;          /* his bundle's whole bank                  */
     int         nanims;
+    int         bank;           /* AICTRL.GAS's `.weapon_action`: the offset
+                                   into that bank the logic table's numbers
+                                   land at.  Zero is his own animations; a
+                                   weapon in his hand moves it to that
+                                   weapon's sheet's block of 28, and the
+                                   table itself does not change (collect.h) */
     const LogicTable *logic;    /* which joypad table drives him            */
 } Act;
 
@@ -58,6 +79,11 @@ typedef struct {
     int  player;                /* the slot the pad drives, -1 if none      */
     long frame;                 /* framecount, which is where the AI's
                                    attack machine gets its rhythm from      */
+    int  instpick;              /* COMBAT.GAS's `instpick`: the one
+                                   collectable the player has just come
+                                   within reach of, as an act slot, or -1.
+                                   Set by the pickup half of PPCOLL, read
+                                   and cleared by COLLECT (collect.h)        */
 } ActTable;
 
 void act_init(ActTable *t);
@@ -66,6 +92,13 @@ void act_init(ActTable *t);
  * is created but not placed: actor_place puts him on a floor. */
 int  act_add(ActTable *t, int world, int sheet, int cast,
              const Anim *anims, int nanims, const LogicTable *logic);
+
+/* Gives a slot back.  `ParseACT` does this to everybody who does not belong to
+ * the set being entered, and `acceptobj` to an object that has just gone into
+ * a pocket: the record is cleared and the slot is reused by the next act_add,
+ * which is the original's own search for a zero entry.  Records after it do
+ * not move, so an index held across this call still names the same character. */
+void act_free(ActTable *t, int i);
 
 /* The slot holding a given world record, or -1.  This is `select`'s search:
  * the script names a world-state entry and gets back the character table

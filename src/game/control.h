@@ -55,6 +55,13 @@
 #define FIRE_A      4
 #define FIRE_B      5
 #define FIRE_C      6
+/* The keypad half, which only COLLECT.GAS reads: OPTION opens the inventory
+ * and `*` or `#` leaves it.  Ours too - the Jaguar include that numbered them
+ * is not in the dump - and kept clear of LOGICS.INC's own bits above. */
+#define PAD_OPTION  7
+#define PAD_PAUSE   8
+#define PAD_STAR    9
+#define PAD_HASH    10
 #define JOY_DOUBLE  24          /* LOGICS.INC */
 #define JOY_KNOCK1  26
 #define JOY_KNOCK2  27

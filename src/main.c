@@ -253,7 +253,7 @@ static int models_open(ModelSet *ms, const char *spec, int *index)
  * track 5, which is where the bundle begins (sheet.h, and
  * docs/12-world-and-sheets.md 12.7).  The track's layout - a bundle and then
  * its animations, one slot each - is what makes the animations follow. */
-#define CAST_MAX 32
+#define CAST_MAX 64
 
 typedef struct {
     ModelSet ms;
@@ -263,6 +263,17 @@ typedef struct {
     int      ncast;
     Bundle   bundle[CAST_MAX];
     int      first_anim[CAST_MAX], nanim[CAST_MAX];
+
+    /* And the things, which are not on track 5 at all.  A sheet with one
+     * model and no animations loads nothing off the CD: its models[0] is
+     * already an address in the resident binary, and eighteen of the
+     * nineteen models in there are named by one sheet each
+     * (docs/12-world-and-sheets.md 12.7).  So an item's bundle is one
+     * model with no skeleton and no bank, appended after the cast.  */
+    ModelSet boot;
+    int      have_boot;
+    int      ncast0;               /* how many came off track 5      */
+    int      of_sheet[CSH_MAX];    /* sheet -> cast index, or -1     */
 } Cast;
 
 static int cast_open(Cast *c)
@@ -283,6 +294,7 @@ static int cast_open(Cast *c)
             break;
         c->ncast++;
     }
+    c->ncast0 = c->ncast;
     /* The animations between one bundle and the next belong to it. */
     for (int i = 0; i < c->ncast; i++) {
         long from = c->bundle[i].piece[0]->offset;
@@ -298,11 +310,90 @@ static int cast_open(Cast *c)
     return c->ncast > 0;
 }
 
+/* Give every sheet a bundle: the track-5 ones it already has, and a one-piece
+ * one built from the resident binary for every item and weapon.  After this
+ * `of_sheet[i]` is what to draw for a character wearing sheet i, whatever kind
+ * of thing he is. */
+static int cast_items(Cast *c, Sheets *sh)
+{
+    /* Which track-5 bundle each sheet wears, matched on the block its own file
+     * record names.  Everything below needs this and nothing else was doing
+     * it: --drive only reached it through the search for the follower. */
+    c->ncast = c->ncast0;               /* drop any item bundles already made:
+                                           this runs once per Sheets, and
+                                           there is one Sheets per Game     */
+    long off[CAST_MAX];
+    for (int i = 0; i < c->ncast0; i++)
+        off[i] = c->bundle[i].piece[0]->offset;
+    sheets_bundles(sh, off, c->ncast0);
+
+    for (int i = 0; i < CSH_MAX; i++)
+        c->of_sheet[i] = -1;
+    for (int i = 0; i < sh->nsheets && i < CSH_MAX; i++)
+        c->of_sheet[i] = sh->sheet[i].bundle;
+
+    if (!c->have_boot) {
+        if (!models_open(&c->boot, "boot", &(int){0}))
+            return 0;
+        c->have_boot = 1;
+    }
+
+    /* A sheet that names a track-5 slot but whose slot holds no *bundle*.
+     * `bundle_at` wants a model that hangs on no origin point and publishes at
+     * least one, which is a skeleton's root; a thing with no joints publishes
+     * none and is skipped.  Five sheets are like that - 17 to 21, the one that
+     * faces you and the four tumblers of the combination lock - and their slot
+     * holds a single model with no skeleton, exactly like an item's.  So take
+     * the model that starts where the slot starts. */
+    for (int i = 0; i < sh->nsheets && i < CSH_MAX; i++) {
+        if (c->of_sheet[i] >= 0 || sh->sheet[i].block < 0 || c->ncast >= CAST_MAX)
+            continue;
+        long want = (long)sh->sheet[i].block * 2352 + 4;
+        for (int m = 0; m < c->ms.count; m++) {
+            if (c->ms.list[m].offset != want)
+                continue;
+            Bundle *b = &c->bundle[c->ncast];
+            memset(b, 0, sizeof *b);
+            b->npieces   = 1;
+            b->piece[0]  = &c->ms.list[m];
+            b->parent[0] = -1;
+            c->first_anim[c->ncast] = -1;
+            c->nanim[c->ncast]      = 0;
+            c->of_sheet[i] = c->ncast++;
+            break;
+        }
+    }
+
+    for (int i = 0; i < sh->nsheets && i < CSH_MAX; i++) {
+        if (!sh->sheet[i].model0 || c->of_sheet[i] >= 0)
+            continue;
+        for (int m = 0; m < c->boot.count; m++) {
+            if ((uint32_t)c->boot.list[m].base != sh->sheet[i].model0)
+                continue;
+            if (c->ncast >= CAST_MAX)
+                break;
+            Bundle *b = &c->bundle[c->ncast];
+            memset(b, 0, sizeof *b);
+            b->npieces   = 1;
+            b->piece[0]  = &c->boot.list[m];
+            b->parent[0] = -1;
+            c->first_anim[c->ncast] = -1;
+            c->nanim[c->ncast]      = 0;
+            c->of_sheet[i] = c->ncast++;
+            break;
+        }
+    }
+    return 1;
+}
+
 static void cast_free(Cast *c)
 {
     if (c->ms.list)
         model_free_all(c->ms.list, c->ms.count);
     io_free(&c->ms.file);
+    if (c->boot.list)
+        model_free_all(c->boot.list, c->boot.count);
+    io_free(&c->boot.file);
     free(c->anim);
     io_free(&c->file);
 }
@@ -343,6 +434,24 @@ static int cast_join(ActTable *t, Cast *cast, int world, int sheet, int b,
     return i;
 }
 
+/* SETLOGIC.GAS's `ParseWST` asks for a body and this is what answers.
+ *
+ * Anything with a bundle gets one, with `cshBehaviour` as its AI command and
+ * the same joypad table as everyone else - which is the point of the table
+ * being the format's rather than Quentin's (docs/15-combat.md 15.2).  An item
+ * gets one too, and never presses a button: `aiNop`, one model, no
+ * animations, and a radius that makes it something to walk into. */
+static int spawn_from_cast(void *ud, Game *g, int world, int sheet, int behaviour)
+{
+    Cast *c = (Cast *)ud;
+    if (sheet < 0 || sheet >= CSH_MAX)
+        return -1;
+    int b = c->of_sheet[sheet];
+    if (b < 0 || b >= c->ncast)
+        return -1;
+    return cast_join(&g->act, c, world, sheet, b, &control_quentin, behaviour);
+}
+
 /* Where a weapon's animations begin inside the player's bundle.
  *
  * Quentin's bundle carries **114** animations and his own sheet declares
@@ -359,20 +468,21 @@ static int cast_join(ActTable *t, Cast *cast, int world, int sheet, int b,
  * the same table's numbers land in.  Bank 0 is bare hands, and its attacks do
  * 2 points; bank 1 does 30, bank 2 does 127 and bank 3 is the one with a reach
  * of 1,000 and an arc of five degrees, which is a thing you shoot with. */
-static int weapon_bank(const Sheets *sh, int n)
+static int weapon_sheet(const Sheets *sh, int n)
 {
     if (n <= 0)
-        return 0;
-    int off = sh->nsheets > 1 ? sh->sheet[1].anims : 0;
+        return -1;
     int seen = 0;
-    for (int i = 0; i < sh->nsheets; i++) {
-        if (sh->sheet[i].models != 1 || sh->sheet[i].anims == 0)
-            continue;
-        if (++seen == n)
-            return off;
-        off += sh->sheet[i].anims;
-    }
+    for (int i = 0; i < sh->nsheets; i++)
+        if (sheets_anim_bank(sh, i) > 0 && ++seen == n)
+            return i;
     return -1;
+}
+
+static int weapon_bank(const Sheets *sh, int n)
+{
+    int sheet = weapon_sheet(sh, n);
+    return sheet < 0 ? (n <= 0 ? 0 : -1) : sheets_anim_bank(sh, sheet);
 }
 
 /* The first world record wearing a given sheet, which is how a character who
@@ -857,6 +967,537 @@ static int check_follow(void)
  * shows up as scripts quietly dying.  No process hitting the command budget -
  * that is a loop with no `quit` in it, which on the real machine hangs the
  * GPU.  And no script left running off the end of its own slot. */
+/* ---- the inventory, checked ---------------------------------------- */
+
+/* Half a dozen questions the disc and the port can be made to answer
+ * together.  docs/16-inventory.md.
+ *
+ *   1  the world table's own shape: how many things there are, how many are
+ *      already in somebody's keeping, and that none of them is in the world;
+ *   2  `ParseWST` over all 48 sets, which is what puts them there;
+ *   3  a pickup and a drop for every collectable that ends up on a floor -
+ *      the item offers itself once, the accept empties the floor, the search
+ *      finds it in the pocket, the drop puts it back;
+ *   4  `DeadControl`, which is where most of them come from.
+ */
+
+/* A scene id in the set's *own* group.
+ *
+ * A set lists the views it can cut to, and some of those belong to its
+ * neighbours - which matters here, because `wstSet` is a group and standing in
+ * a borrowed view would populate the set next door.  The set's own group is
+ * the one most of its views share. */
+static uint16_t scene_in_set(const Set *s)
+{
+    int best = -1, bestn = 0;
+    for (int i = 0; i < s->nscenes; i++) {
+        int g = s->scene[i].id >> 6, n = 0;
+        for (int k = 0; k < s->nscenes; k++)
+            if ((s->scene[k].id >> 6) == g)
+                n++;
+        if (n > bestn) {
+            bestn = n;
+            best  = i;
+        }
+    }
+    return best >= 0 ? s->scene[best].id : 0xFFFF;
+}
+
+static int ws_flag(const Game *g, int w, int bit)
+{
+    return (g->vm.ws[w * WS_REC + WS_FLAGS] >> bit) & 1;
+}
+
+static int ws_owner(const Game *g, int w)
+{
+    const uint8_t *p = g->vm.ws + w * WS_REC + WS_PARENT;
+    uint32_t a = ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+                 ((uint32_t)p[2] << 8) | p[3];
+    return a ? ws_owner_of(a) : -1;
+}
+
+static int32_t ws_long(const Game *g, int w, int off)
+{
+    const uint8_t *p = g->vm.ws + w * WS_REC + off;
+    return (int32_t)(((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+                     ((uint32_t)p[2] << 8) | p[3]);
+}
+
+/* One press: COLLECT reads the pad's rising edges, so a button that is simply
+ * held is one press and not a stream of them. */
+static void pad_tap(Game *g, uint32_t bits)
+{
+    game_frame(g, bits);
+    game_frame(g, 0);
+}
+
+/* Stand the player as far from (x, z) as the mesh allows, and let a few frames
+ * go by with any screen dismissed.
+ *
+ * This is not tidying up.  An item whose `PICKUP` flag is set does not offer
+ * itself again, and only walking out of its circle clears it - so a harness
+ * that tries one item after another without moving him in between is testing
+ * a player who never took a step, and every item after the first is silently
+ * refused.  Which is the behaviour you want in the game and a trap in a test. */
+static void walk_away(Game *g, int ip, int32_t x, int32_t z)
+{
+    int64_t best = -1;
+    int32_t bx = 0, bz = 0;
+    for (int t = 0; t < g->set.ntris; t++) {
+        int64_t cx = 0, cz = 0;
+        for (int k = 0; k < 3; k++) {
+            cx += g->set.vert[g->set.tri[t].vert[k]].x;
+            cz += g->set.vert[g->set.tri[t].vert[k]].z;
+        }
+        cx /= 3;
+        cz /= 3;
+        int64_t dx = cx - x, dz = cz - z, d = dx * dx + dz * dz;
+        if (d > best) {
+            best = d;
+            bx = (int32_t)cx;
+            bz = (int32_t)cz;
+        }
+    }
+    if (best < 0 || !actor_place(&g->act.a[ip].actor, &g->set, bx, bz, 0))
+        return;
+    for (int f = 0; f < 4; f++) {
+        game_frame(g, 0);
+        if (g->collect.screen != COLLECT_CLOSED)
+            pad_tap(g, PAD(FIRE_A));
+    }
+}
+
+/* What one bank of the player's bundle swings for.  Each animation that
+ * carries a blow contributes its own peak, and the distinct peaks are listed
+ * with how many animations hold each - which is more use than a maximum,
+ * because a bank is not one number: Quentin's own thirty are mostly 2 and one
+ * of them is 30. */
+static void bank_report(const Cast *c, int bank, int count)
+{
+    int val[32], num[32], nv = 0, swings = 0, reach = 0;
+    for (int k = bank; k < bank + count && k < c->nanim[0]; k++) {
+        const Anim *an = &c->anim[c->first_anim[0] + k];
+        int peak = 0, r = 0;
+        for (int f = 0; f < an->frames; f++) {
+            AnimFrame fr;
+            anim_frame(an, f, &fr);
+            int h = fr.hit < 0 ? -fr.hit : fr.hit;
+            if (h > peak) {
+                peak = h;
+                r    = fr.range;
+            }
+        }
+        if (!peak)
+            continue;
+        swings++;
+        if (r > reach)
+            reach = r;
+        int i = 0;
+        while (i < nv && val[i] != peak)
+            i++;
+        if (i == nv && nv < 32) {
+            val[nv] = peak;
+            num[nv] = 0;
+            nv++;
+        }
+        if (i < nv)
+            num[i]++;
+    }
+    printf("animations %d..%d, %d of them swing, for", bank, bank + count - 1,
+           swings);
+    for (int i = 0; i < nv; i++)
+        printf(" %d%s%d)", val[i], " (x", num[i]);
+    printf(", reaching %d\n", reach);
+}
+
+static int check_inventory(void)
+{
+    Cast cast;
+    if (!cast_open(&cast)) {
+        fprintf(stderr, "no cast on track 5\n");
+        return 0;
+    }
+
+    /* ---- 1. the table -------------------------------------------------- */
+    Sheets sh;
+    if (!sheets_load(&sh, path_boot)) {
+        fprintf(stderr, "no world table in %s\n", path_boot);
+        cast_free(&cast);
+        return 0;
+    }
+    int used = 0, coll = 0, weap = 0, owned = 0, reg = 0, inanim = 0;
+    for (int i = 0; i < sh.nworld; i++) {
+        const WorldRec *w = &sh.world[i];
+        if (!w->used)
+            continue;
+        used++;
+        if (w->flags & WST_COLLECTABLE) coll++;
+        if (w->flags & WST_WEAPON)      weap++;
+        if (w->flags & WST_INANIMATE)   inanim++;
+        if (w->parent)                  owned++;
+        if (w->flags & 1)               reg++;
+    }
+    printf("the world table: %d records in use, %d collectable, %d of those "
+           "weapons\n", used, coll, weap);
+    printf("  %d start in somebody's keeping and %d are registered - nothing "
+           "is in the world until ParseWST puts it there\n", owned, reg);
+    sheets_free(&sh);
+
+    /* ---- 2. ParseWST, group by group ------------------------------------ */
+
+    /* The unit is the **group**, not the set: `wstSet` is a group, `CurrSet` is
+     * the view on screen masked to $FFC0, and a set lists views from its
+     * neighbours as well as its own.  So walk the groups, and for each take a
+     * view that belongs to it and the set that owns that view. */
+    uint16_t gscene[64];
+    int      gset[64];
+    for (int k = 0; k < 64; k++) {
+        gscene[k] = 0xFFFF;
+        gset[k]   = -1;
+    }
+    for (int i = 0; i < SET_COUNT; i++) {
+        Set set;
+        if (!set_load(&set, path_set, i))
+            continue;
+        for (int k = 0; k < set.nscenes; k++) {
+            int gr = set.scene[k].id >> 6;
+            if (gr < 64 && gset[gr] < 0) {
+                gset[gr]   = i;
+                gscene[gr] = set.scene[k].id;
+            }
+        }
+        set_free(&set);
+    }
+
+    int claimed[WS_COUNT];
+    memset(claimed, 0, sizeof claimed);
+    int groups = 0, bodies = 0, floor_items = 0, twice = 0;
+
+    for (int gr = 0; gr < 64; gr++) {
+        if (gset[gr] < 0)
+            continue;
+        Game g;
+        if (!game_open(&g, path_set, path_boot))
+            continue;
+        g.spawn    = spawn_from_cast;
+        g.spawn_ud = &cast;
+        cast_items(&cast, &g.sheets);
+        g.have_cam = 0;              /* the harness wants the whole group, not
+                                        what one camera can see             */
+        if (game_enter(&g, gscene[gr], gset[gr])) {
+            groups++;
+            bodies += g.parsed;
+            for (int w = 0; w < WS_COUNT; w++) {
+                int slot = act_of_world(&g.act, w);
+                if (slot < 0 || !(g.act.a[slot].flags & ACT_FROM_WORLD))
+                    continue;
+                if (claimed[w]++)
+                    twice++;
+                if (g.sheets.world[w].flags & WST_COLLECTABLE)
+                    floor_items++;
+            }
+        }
+        game_close(&g);
+    }
+    printf("ParseWST over the %d scene groups the sets name: %d bodies, "
+           "%d of them collectable, %d records claimed twice\n",
+           groups, bodies, floor_items, twice);
+
+    /* Everything with a sheet and a set should have been claimed once, unless
+     * it is deactivated or in a pocket - which are SCNLOGIC's two other
+     * tests. */
+    Sheets s2;
+    int unclaimed = 0, expected = 0;
+    if (sheets_load(&s2, path_boot)) {
+        for (int w = 0; w < s2.nworld; w++) {
+            const WorldRec *r = &s2.world[w];
+            if (!r->used || !r->sheet || r->parent || (r->flags & WST_DEACTIVATED))
+                continue;
+            expected++;
+            if (!claimed[w])
+                unclaimed++;
+        }
+        sheets_free(&s2);
+    }
+    printf("  %d records are free, awake and wearing a sheet; %d of them "
+           "never got a body\n", expected, unclaimed);
+    if (unclaimed && sheets_load(&s2, path_boot)) {
+        printf("   ");
+        for (int w = 0; w < s2.nworld; w++) {
+            const WorldRec *r = &s2.world[w];
+            if (!r->used || !r->sheet || r->parent ||
+                (r->flags & WST_DEACTIVATED) || claimed[w])
+                continue;
+            printf(" %d(g%d,s%d)", w, r->group,
+                   sheets_of_addr(&s2, r->sheet));
+        }
+        putchar(10);
+        sheets_free(&s2);
+    }
+
+    /* ---- 3. pickup and drop --------------------------------------------- */
+    int tried = 0, offered_once = 0, accepted = 0, found = 0, redropped = 0,
+        offered_twice = 0, unreachable = 0, prevented = 0;
+
+    for (int i = 0; i < SET_COUNT; i++) {
+        Set probe;
+        if (!set_load(&probe, path_set, i))
+            continue;
+        uint16_t id = scene_in_set(&probe);
+        set_free(&probe);
+        if (id == 0xFFFF)
+            continue;
+
+        Game g;
+        if (!game_open(&g, path_set, path_boot))
+            continue;
+        g.spawn    = spawn_from_cast;
+        g.spawn_ud = &cast;
+        cast_items(&cast, &g.sheets);
+        g.have_cam = 0;
+
+        int ip = cast_join(&g.act, &cast, WORLD_PLAYER, 1, 0,
+                           &control_quentin, AI_NOP);
+        g.act.player = ip;
+        if (ip < 0 || !game_enter(&g, id, i)) {
+            game_close(&g);
+            continue;
+        }
+
+        /* Every collectable this set put on its floor, one at a time. */
+        for (int w = 0; w < WS_COUNT; w++) {
+            int slot = act_of_world(&g.act, w);
+            if (slot < 0 || slot == ip || !(g.act.a[slot].flags & ACT_FROM_WORLD))
+                continue;
+            if (!(g.sheets.world[w].flags & WST_COLLECTABLE))
+                continue;
+            if (g.act.a[slot].actor.tri < 0)
+                continue;
+            tried++;
+
+            /* Stand him on it.  PPCOLL's test is the two circles overlapping,
+             * so this is as close as walking into it. */
+            Act *item = &g.act.a[slot];
+            int32_t ix = item->actor.x, iz = item->actor.z;
+            walk_away(&g, ip, ix, iz);
+            if (!actor_place(&g.act.a[ip].actor, &g.set, ix, iz, 0)) {
+                unreachable++;
+                continue;
+            }
+
+            /* Wait for it to claim `instpick`.  Only one thing may do that
+             * in a frame, so where two lie together the other one can get in
+             * first: reject whatever comes up that is not this and go round
+             * again, which is what a player would do. */
+            int offers = 0;
+            for (int f = 0; f < 12 && !offers; f++) {
+                game_frame(&g, 0);
+                if (g.collect.screen != COLLECT_PICKUP)
+                    continue;
+                if (g.collect.pickup == w)
+                    offers++;
+                else
+                    pad_tap(&g, PAD(FIRE_A));    /* not this one - put it back */
+            }
+            if (offers != 1) {
+                if (g.vm.gamestate[0] & 3u)
+                    prevented++;        /* the set has taken the pickup over */
+                else
+                    printf("   world %3d in group %2d never claimed instpick, "
+                           "radius %d\n", w, g.scene >> 6,
+                           g.sheets.world[w].radius);
+                continue;
+            }
+            offered_once++;
+
+            /* B: accept.  The floor should be empty of it and the pocket
+             * should have it. */
+            pad_tap(&g, PAD(FIRE_B));
+            if (ws_owner(&g, w) == WORLD_PLAYER &&
+                act_of_world(&g.act, w) < 0 && !ws_flag(&g, w, 0))
+                accepted++;
+            else
+                continue;
+
+            /* Now open it with OPTION - unless this set has said not to.
+             * `WSB_COLLECT_PREVENT` is world-state bit 0, "when set you can't
+             * pick anything up using option button", and the scripts do set
+             * it: three of the groups here have it up, and in those the button
+             * is dead by design.  So that is a count, not a failure. */
+            if (g.vm.gamestate[0] & 1u) {
+                prevented++;
+                continue;
+            }
+
+            /* The screen's own search should find it in there.  Every press
+             * has to be a press: COLLECT reads `pad_shot`, so a button held
+             * down moves the list exactly once. */
+            pad_tap(&g, PAD(PAD_OPTION));
+            if (g.collect.screen != COLLECT_OPTION) {
+                prevented++;            /* the script raised the bit while we
+                                           were reaching for the button      */
+                continue;
+            }
+            int steps = 0;
+            while (g.vm.currws != w && steps++ < WS_COUNT)
+                pad_tap(&g, PAD(JOY_RIGHT));
+            if (g.vm.currws == w)
+                found++;
+            else
+                printf("   world %3d went into the pocket but the screen's "
+                       "search walked past it\n", w);
+
+            /* A: drop it.  Back on the floor, at his feet, unowned. */
+            int32_t px = g.act.a[ip].actor.x, pz = g.act.a[ip].actor.z;
+            pad_tap(&g, PAD(FIRE_A));
+            if (ws_owner(&g, w) < 0 && ws_flag(&g, w, 0) &&
+                act_of_world(&g.act, w) >= 0 &&
+                ws_long(&g, w, WS_XPOS) == px && ws_long(&g, w, WS_ZPOS) == pz)
+                redropped++;
+            else
+                continue;
+
+            /* And it must not offer itself again while he is standing in it:
+             * `createchar` set its PICKUP flag, and only walking out of the
+             * circle clears it. */
+            for (int f = 0; f < 8; f++) {
+                game_frame(&g, 0);
+                if (g.collect.screen == COLLECT_PICKUP) {
+                    if (g.collect.pickup == w)
+                        offered_twice++;
+                    pad_tap(&g, PAD(FIRE_A));
+                    break;
+                }
+            }
+        }
+        game_close(&g);
+    }
+    printf("pickup and drop: %d collectables tried where their own group "
+           "put them, %d on a piece of floor he cannot reach\n",
+           tried, unreachable);
+    printf("  %d offered themselves on exactly one frame and %d went into "
+           "the pocket\n", offered_once, accepted);
+
+    printf("  %d were found again by the screen's own search and %d came "
+           "back to the floor at his feet\n", found, redropped);
+    printf("  %d were left alone because their set had taken the pickup over "
+           "- WSB_COLLECT_PREVENT or WSB_SCRIPT_PICKUP, which is what the two "
+           "bits are for\n", prevented);
+    printf("  %d offered themselves twice over without being left and "
+           "returned\n", offered_twice);
+
+    /* ---- 4. DeadControl -------------------------------------------------- */
+    int killed = 0, carried = 0, fell = 0, standing = 0;
+    for (int i = 0; i < SET_COUNT; i++) {
+        Set probe;
+        if (!set_load(&probe, path_set, i))
+            continue;
+        uint16_t id = scene_in_set(&probe);
+        set_free(&probe);
+        if (id == 0xFFFF)
+            continue;
+
+        Game g;
+        if (!game_open(&g, path_set, path_boot))
+            continue;
+        g.spawn    = spawn_from_cast;
+        g.spawn_ud = &cast;
+        cast_items(&cast, &g.sheets);
+        g.have_cam = 0;
+        int ip = cast_join(&g.act, &cast, WORLD_PLAYER, 1, 0,
+                           &control_quentin, AI_NOP);
+        g.act.player = ip;
+        if (ip < 0 || !game_enter(&g, id, i)) {
+            game_close(&g);
+            continue;
+        }
+
+        for (int slot = 0; slot < g.act.n; slot++) {
+            Act *a = &g.act.a[slot];
+            if (!(a->flags & ACT_CREATED) || slot == ip || a->world < 0)
+                continue;
+            if (!(a->flags & ACT_FROM_WORLD))
+                continue;
+            int n = 0;
+            for (int w = 0; w < WS_COUNT; w++)
+                if (ws_owner(&g, w) == a->world)
+                    n++;
+            if (!n)
+                continue;
+
+            int32_t dx = a->actor.x, dz = a->actor.z;
+            int his[WS_COUNT], hn = 0;
+            for (int w = 0; w < WS_COUNT; w++)
+                if (ws_owner(&g, w) == a->world)
+                    his[hn++] = w;
+            killed++;
+            carried += n;
+            int made = collect_drop_all(&g, a->world);
+            fell += made;
+            for (int k = 0; k < hn; k++) {
+                int w = his[k];
+                if (ws_owner(&g, w) < 0 && ws_flag(&g, w, 0) &&
+                    ws_long(&g, w, WS_XPOS) == dx &&
+                    ws_long(&g, w, WS_ZPOS) == dz)
+                    standing++;
+            }
+        }
+        game_close(&g);
+    }
+    printf("DeadControl: %d characters died with something in their pockets, "
+           "carrying %d objects between them\n", killed, carried);
+    printf("  %d fell out, %d of them standing where he fell\n", fell, standing);
+
+    /* ---- 5. what a weapon does ------------------------------------------ */
+
+    /* The seven records with `WSTWeapon` wear three sheets, and `chooseit`
+     * sends every one of them down `wpn`: `animsheet` points at the weapon's
+     * own sheet, and from then on the player's animation numbers are looked up
+     * there first.  In this port that is an offset into his one bundle, so
+     * what the check asks is whether choosing a weapon moves the offset to the
+     * block the weapon's sheet owns and whether the blow he then swings is the
+     * one that block draws.
+     *
+     * Session 12 measured those blows from the outside and found them at 2,
+     * 30, 127 and a thousand-unit reach; this is the same numbers arrived at
+     * from the other end, by picking the thing up. */
+    /* One bank of the player's bundle, described the way the fight feels it:
+     * how many of its animations swing, what each swings for, and how far. */
+    printf("weapons: the bank `chooseit` moves his animation numbers into\n");
+    {
+        Sheets s3;
+        if (sheets_load(&s3, path_boot)) {
+            long boff[CAST_MAX];
+            for (int i = 0; i < cast.ncast0; i++)
+                boff[i] = cast.bundle[i].piece[0]->offset;
+            sheets_bundles(&s3, boff, cast.ncast0);
+
+            int seen[CSH_MAX];
+            memset(seen, 0, sizeof seen);
+            for (int w = 0; w < s3.nworld; w++) {
+                const WorldRec *r = &s3.world[w];
+                if (!r->used || !(r->flags & WST_WEAPON))
+                    continue;
+                int sheet = sheets_of_addr(&s3, r->sheet);
+                if (sheet < 0 || seen[sheet]++)
+                    continue;
+                int bank = sheets_anim_bank(&s3, sheet);
+
+                printf("  world %3d wears sheet %2d: ", w, sheet);
+                bank_report(&cast, bank, s3.sheet[sheet].anims);
+            }
+            /* And bare hands, which is the same question with the offset at
+             * zero. */
+            printf("  with nothing in his hands:    ");
+            bank_report(&cast, 0, s3.nsheets > 1 ? s3.sheet[1].anims : 30);
+            sheets_free(&s3);
+        }
+    }
+
+    cast_free(&cast);
+    return 1;
+}
+
 static int check_script(void)
 {
     Blob boot = io_read(path_boot);
@@ -1715,14 +2356,14 @@ static void usage(void)
 "  --list-scenes | --list-models | --list-objects | --list-chars\n"
 "  --alone           leave the companion out of --drive\n"
 "  --fight           put a hunter in the set, two metres in front\n"
-"  --weapon N        1, 2 or 3: which bank of the bundle he swings\n"
+"  --weapon N        1, 2 or 3: put that weapon in his hand, as a pickup\n"
 "  --list-sheets     the character sheets, and what each one wears\n"
 "  --list-anims N    one bundle's animations, by their own root motion\n"
 "  --list-attacks    which animations carry a blow, and how hard\n"
 "  --film N          play one of the 36 Cinepak films, at its own 12 fps\n"
 "                    with --shot F.ppm --shot-at N it writes frame N out\n"
 "  --check-mesh | --check-char | --check-doors | --check-follow\n"
-"  --check-script | --check-film | --check-combat\n");
+"  --check-script | --check-film | --check-combat | --check-inventory\n");
 }
 
 static int parse_triple(const char *s, int *out)
@@ -1751,7 +2392,8 @@ static int parse_pad(const char *spec)
             static const struct { const char *n; int b; } key[] = {
                 { "up", JOY_UP }, { "down", JOY_DOWN }, { "left", JOY_LEFT },
                 { "right", JOY_RIGHT }, { "a", FIRE_A }, { "b", FIRE_B },
-                { "c", FIRE_C }, { NULL, 0 }
+                { "c", FIRE_C }, { "option", PAD_OPTION },
+                { "star", PAD_STAR }, { "hash", PAD_HASH }, { NULL, 0 }
             };
             int n = 0;
             while (spec[n] && spec[n] != '+' && spec[n] != ':' && spec[n] != ',')
@@ -1843,6 +2485,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--check-script")) { paths(a.tracks); return !check_script(); }
         else if (!strcmp(argv[i], "--check-film")) { paths(a.tracks); return !check_film(); }
         else if (!strcmp(argv[i], "--check-combat")) { paths(a.tracks); return !check_combat(); }
+        else if (!strcmp(argv[i], "--check-inventory")) { paths(a.tracks); return !check_inventory(); }
         else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) { usage(); return 0; }
         else { usage(); return argv[i][0] == '-' ? 1 : 0; }
     }
@@ -2155,6 +2798,11 @@ int main(int argc, char **argv)
             return 1;
         }
         int fb = -1, fs = follower_sheet(&game.sheets, &cast, &fb);
+        /* The set fills itself from the world table now, so the loop needs a
+         * way to turn a record into a body. */
+        cast_items(&cast, &game.sheets);
+        game.spawn    = spawn_from_cast;
+        game.spawn_ud = &cast;
         int ip = cast_join(&game.act, &cast, WORLD_PLAYER, 1, a.character,
                            &control_quentin, AI_NOP);
         game.act.player = ip;
@@ -2163,16 +2811,6 @@ int main(int argc, char **argv)
 
         /* What he is holding, which is an offset into his own bundle and
          * nothing else - the table's animation numbers do not change. */
-        int bank = weapon_bank(&game.sheets, a.weapon);
-        if (a.weapon > 0 && ip >= 0 && bank >= 0 &&
-            bank + 28 <= cast.nanim[a.character]) {
-            game.act.a[ip].anims  += bank;
-            game.act.a[ip].nanims -= bank;
-            printf("weapon %d: animations %d..%d of the bundle\n", a.weapon,
-                   bank, bank + 27);
-        } else if (a.weapon > 0) {
-            fprintf(stderr, "no weapon bank %d in this bundle\n", a.weapon);
-        }
         if (fs >= 0 && !a.alone) {
             cast_join(&game.act, &cast, WORLD_COMPANION, fs, fb,
                       &control_follower, game.sheets.sheet[fs].behaviour);
@@ -2211,7 +2849,11 @@ int main(int argc, char **argv)
         }
 
         /* Arrive.  The set the scene footer names is the one that owns it, so
-         * there is no search to do on the way in. */
+         * there is no search to do on the way in.  The camera goes in first:
+         * SCNLOGIC measures who is close enough to be worth a body against it. */
+        for (int k = 0; k < 3; k++)
+            game.cam[k] = scene.cam.pos[k];
+        game.have_cam = 1;
         int hint = scene_set(&scene.cam);
         if (!game_enter(&game, scene.cam.id, hint < SET_COUNT ? hint : -1)) {
             fprintf(stderr, "no set owns scene id %d\n", scene.cam.id);
@@ -2237,13 +2879,39 @@ int main(int argc, char **argv)
             vm_register(&game.vm, game.act.a[hunter].world);
         }
 
+        /* And what he is holding, which is now a thing he owns rather than
+         * an offset somebody typed: the world record of a weapon goes into his
+         * pocket and then into his hand, through the same two routines the
+         * screen calls.  `chooseit` does the rest - `animsheet` points at that
+         * weapon's sheet, and his animation numbers land in its bank. */
+        if (a.weapon > 0 && ip >= 0) {
+            int wsheet = weapon_sheet(&game.sheets, a.weapon);
+            int wrec   = world_of_sheet(&game.sheets, wsheet);
+            if (wrec >= 0) {
+                collect_accept(&game, wrec, WORLD_PLAYER);
+                collect_choose(&game, wrec, 1);
+                printf("weapon %d: world %d, sheet %d, animations %d..%d of "
+                       "his bundle\n", a.weapon, wrec, wsheet,
+                       game.collect.bank, game.collect.bank + 27);
+            } else {
+                fprintf(stderr, "no world record wears weapon sheet %d\n",
+                        wsheet);
+            }
+        }
+
         have_game = 1;
-        for (int i = 0; i < game.act.n; i++)
-            printf("  %-9s at (%6d,%6d) on triangle %3d facing %3d\n",
+        printf("the set populates itself from the world table: "
+               "%d records registered\n", game.parsed);
+        for (int i = 0; i < game.act.n; i++) {
+            const Act *ac = &game.act.a[i];
+            if (!(ac->flags & ACT_CREATED))
+                continue;
+            printf("  %-9s world %3d sheet %2d  at (%6d,%6d) tri %3d  %s\n",
                    i == game.act.player ? "player"
-                                        : i == hunter ? "hunter" : "companion",
-                   game.act.a[i].actor.x, game.act.a[i].actor.z,
-                   game.act.a[i].actor.tri, game.act.a[i].actor.facing);
+                                        : i == hunter ? "hunter" : "here",
+                   ac->world, ac->sheet, ac->actor.x, ac->actor.z,
+                   ac->actor.tri, ai_command_name(ac->ai.command));
+        }
         printf("  the machine starts on the first frame: MAINSCRIPT, and set"
                " %d's own script if it has one (%d bytes)\n",
                game.set.index, game.set.script_len);
@@ -2457,6 +3125,37 @@ int main(int argc, char **argv)
                 }
                 printf("silhouette %d px, %d visible, %d hidden by the scene\n",
                        silhouette, visible, silhouette - visible);
+            }
+        }
+
+        /* The inventory screen, which COLLECT draws over whatever the frame
+         * had got to - it is the last module in the frame for exactly this
+         * reason.  `darken_screen` halves every channel of every pixel by
+         * shifting the whole word right one and masking the carry out of each
+         * field, and then one model turns on the spot in front of it. */
+        if (have_game && collect_modal(&game.collect)) {
+            for (int i = 0; i < R3D_W * R3D_H; i++)
+                target.colour[i] = (uint16_t)((target.colour[i] >> 1) & 0x7BDF);
+
+            int cw = game.vm.currws;
+            int csheet = cw >= 0 && cw < WS_COUNT
+                       ? sheets_of_addr(&game.sheets,
+                                        game.sheets.world[cw].sheet) : -1;
+            int cb = csheet >= 0 && csheet < CSH_MAX ? cast.of_sheet[csheet] : -1;
+            if (cb >= 0 && cb < cast.ncast) {
+                SceneCam view;
+                memset(&view, 0, sizeof view);
+                for (int k = 0; k < 3; k++)
+                    view.m[k * 3 + k] = 16384;
+                int32_t rot[9];
+                int spin = game.collect.spin & 0xFF;
+                r3d_face_matrix(0, spin, spin, rot);
+                int32_t at[3] = { 0, 0, game.collect.dist };
+                R3dXform x;
+                r3d_place(&x, &view, rot, at);
+                for (int i = 0; i < R3D_W * R3D_H; i++)
+                    target.depth[i] = 0x7FFFFFFF;   /* nothing is in front */
+                r3d_draw_model(&target, cast.bundle[cb].piece[0], &x, &opts);
             }
         }
 

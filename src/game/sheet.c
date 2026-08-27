@@ -156,3 +156,37 @@ int sheets_by_behaviour(const Sheets *s, int command)
             return i;
     return -1;
 }
+
+/* Is this sheet a weapon's?  The game's own answer, and the only one that
+ * does not need a magic number: `chooseit` sends a record down `wpn` when its
+ * `wstFlags` carry `WSTWeapon`, so a weapon sheet is one that some weapon
+ * wears.  Seven records carry the bit and they wear three sheets between
+ * them. */
+static int sheet_is_weapon(const Sheets *s, int sheet)
+{
+    for (int w = 0; w < s->nworld; w++)
+        if (s->world[w].used && (s->world[w].flags & WST_WEAPON) &&
+            sheets_of_addr(s, s->world[w].sheet) == sheet)
+            return 1;
+    return 0;
+}
+
+int sheets_anim_bank(const Sheets *s, int sheet)
+{
+    if (sheet < 0 || sheet >= s->nsheets || !sheet_is_weapon(s, sheet))
+        return 0;
+    /* Sheet 1 is the player, and his own thirty come first; the weapon banks
+     * are stacked behind them in the order the sheet chain runs.  The
+     * arithmetic closes: 30 + 28 + 28 + 28 = 114, which is what his bundle
+     * holds, and the blows land at 19..27 offset by each of 0, 30, 58 and 86
+     * (docs/15-combat.md 15.3). */
+    int off = s->nsheets > 1 ? s->sheet[1].anims : 0;
+    for (int i = 0; i < s->nsheets; i++) {
+        if (!sheet_is_weapon(s, i))
+            continue;
+        if (i == sheet)
+            return off;
+        off += s->sheet[i].anims;
+    }
+    return 0;
+}

@@ -130,4 +130,8 @@ void window_poll(Input *in)
     if (keys[SDL_SCANCODE_A])     in->pad |= 1u << FIRE_A;
     if (keys[SDL_SCANCODE_S])     in->pad |= 1u << FIRE_B;
     if (keys[SDL_SCANCODE_D])     in->pad |= 1u << FIRE_C;
+    /* The keypad half, which is COLLECT's: OPTION opens the inventory,
+     * `*` and `#` leave it. */
+    if (keys[SDL_SCANCODE_TAB])    in->pad |= 1u << PAD_OPTION;
+    if (keys[SDL_SCANCODE_ESCAPE]) in->pad |= 1u << PAD_STAR;
 }

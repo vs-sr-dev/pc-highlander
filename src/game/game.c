@@ -22,6 +22,7 @@ int game_open(Game *g, const char *track3, const char *track2)
     g->want_scene  = -1;
     g->want_sample = -1;
     act_init(&g->act);
+    collect_init(&g->collect);
 
     if (!sheets_load(&g->sheets, track2))
         return 0;
@@ -42,6 +43,162 @@ void game_close(Game *g)
         set_free(&g->set);
     io_free(&g->boot);
     sheets_free(&g->sheets);
+}
+
+/* ---- SETLOGIC.GAS --------------------------------------------------- */
+
+static void place_spare(Game *g, Act *a, int companion);
+
+/* Whether a world record should have a body right now - `SCNLOGIC.GAS`, whose
+ * whole master loop is these four tests and a create-or-delete.
+ *
+ * `ParseWST` says who is *in* the set and stops there: "this bit registers but
+ * does not create characters in current set", says its own comment.  What
+ * turns a registered record into fifteen models on a floor is a separate
+ * module, `CHARNEWSCN`, run on every scene change, and its rule is:
+ *
+ *   - not `WSTDeactivated`, which is the bit the script command `activation`
+ *     turns on and off;
+ *   - **not owned** - `cmpq #0,reg19 / jr NE,.outside`, and reg19 is
+ *     `wstParent`.  This is the guard that keeps what somebody is carrying
+ *     from standing on the floor beside him, and it is why `acceptobj` has no
+ *     need to clear `wstSet` when it takes something into a pocket;
+ *   - within $4000 of the camera in x, and within $4000 in z.
+ *
+ * The distance is measured from the **camera**, not from the player: reg12 and
+ * reg13 come from `CurrScene`+20 and +28.  Which is a second confirmation of
+ * the scene footer's shape - id, nine matrix words, then three position longs
+ * at exactly 20, 24 and 28 (scene.h). */
+#define SCN_RANGE 0x4000
+
+static int scene_wants_body(const Game *g, const uint8_t *p)
+{
+    if (p[WS_FLAGS] & WST_DEACTIVATED)
+        return 0;
+    for (int k = 0; k < 4; k++)
+        if (p[WS_PARENT + k])
+            return 0;
+    if (!g->have_cam)
+        return 1;
+    static const int off[2] = { WS_XPOS, WS_ZPOS };
+    for (int k = 0; k < 2; k++) {
+        const uint8_t *q = p + off[k];
+        int32_t v = (int32_t)(((uint32_t)q[0] << 24) | ((uint32_t)q[1] << 16) |
+                              ((uint32_t)q[2] << 8) | q[3]);
+        int32_t d = v - g->cam[k * 2];
+        if (d < 0)
+            d = -d;
+        if (d >= SCN_RANGE)
+            return 0;
+    }
+    return 1;
+}
+
+/* `GetSet`, which is two loops and no cleverness at all.
+ *
+ * `ParseACT` walks the active character table and throws out everybody whose
+ * world record names a different set: `WSTRegistered` off, the entry cleared,
+ * the model deleted.  `ParseWST` then walks the world table and takes in
+ * everybody it names: every record with a character sheet whose `wstSet`
+ * matches, registered and given an entry with `cshBehaviour` as its AI
+ * command.  A set's population is a query over the world table and nothing is
+ * stored per set at all - which is why the disc's 197 records carry a set each
+ * and the 48 set files carry no cast list.
+ *
+ * `wstSet` is the scene id masked to $FFC0, so it is the group times 64, and
+ * `CurrSet` is the same mask over the view on screen.  One word against one
+ * word: `MAIN.S` writes `SCENE_DUN1_1&$ffc0` into `CurrSet` in as many words.
+ *
+ * Not registering somebody who already has an entry is the original's too -
+ * it is what the `WSTRegistered` test is doing - and it is what keeps the
+ * player, his companion and anybody a harness put in the set by hand from
+ * being taken for scenery and doubled. */
+void game_parse_wst(Game *g)
+{
+    uint16_t curset = (uint16_t)(g->scene & 0xFFC0);
+    g->parsed = 0;
+
+    for (int i = 0; i < g->act.n; i++) {
+        Act *a = &g->act.a[i];
+        if (!(a->flags & ACT_CREATED) || a->world < 0 || i == g->act.player)
+            continue;
+        if (!(a->flags & ACT_FROM_WORLD))
+            continue;                       /* not this loop's to take away */
+        uint8_t *p = g->vm.ws + a->world * WS_REC;
+        uint16_t set = (uint16_t)((p[WS_SET] << 8) | p[WS_SET + 1]);
+        if (!(p[WS_FLAGS] & 1))
+            continue;                       /* WSTRegistered                */
+        if (set == curset && scene_wants_body(g, p))
+            continue;
+        p[WS_FLAGS] &= (uint8_t)~1u;
+        act_free(&g->act, i);
+    }
+
+    for (int i = 0; i < WS_COUNT; i++) {
+        uint8_t *p = g->vm.ws + i * WS_REC;
+        uint32_t sheet_addr = ((uint32_t)p[WS_SHEET] << 24) |
+                              ((uint32_t)p[WS_SHEET + 1] << 16) |
+                              ((uint32_t)p[WS_SHEET + 2] << 8) | p[WS_SHEET + 3];
+        if (!sheet_addr)
+            continue;
+        uint16_t set = (uint16_t)((p[WS_SET] << 8) | p[WS_SET + 1]);
+        if (set != curset || (p[WS_FLAGS] & 1))
+            continue;
+        if (act_of_world(&g->act, i) >= 0)
+            continue;
+        if (!scene_wants_body(g, p))
+            continue;
+
+        int sheet = sheets_of_addr(&g->sheets, sheet_addr);
+        int slot  = -1;
+        if (g->spawn)
+            slot = g->spawn(g->spawn_ud, g, i, sheet,
+                            sheet >= 0 ? g->sheets.sheet[sheet].behaviour : 0);
+        if (slot < 0)
+            continue;
+
+        p[WS_FLAGS] |= 1u;
+        vm_register(&g->vm, i);
+        g->parsed++;
+
+        Act *a = &g->act.a[slot];
+        a->flags |= ACT_FROM_WORLD;
+        a->actor.radius = (int16_t)((p[WS_RADIUS] << 8) | p[WS_RADIUS + 1]);
+        if (g->have_set) {
+            int32_t x = (int32_t)(((uint32_t)p[WS_XPOS] << 24) |
+                                  ((uint32_t)p[WS_XPOS + 1] << 16) |
+                                  ((uint32_t)p[WS_XPOS + 2] << 8) | p[WS_XPOS + 3]);
+            int32_t z = (int32_t)(((uint32_t)p[WS_ZPOS] << 24) |
+                                  ((uint32_t)p[WS_ZPOS + 1] << 16) |
+                                  ((uint32_t)p[WS_ZPOS + 2] << 8) | p[WS_ZPOS + 3]);
+            if (!actor_place(&a->actor, &g->set, x, z, p[WS_ZFACE]))
+                place_spare(g, a, 1);
+        }
+    }
+}
+
+/* The world record is where a character *is*, and `dropit` reads the player's
+ * off it - his set and his three coordinates - to decide where the thing in
+ * his hand lands.  Nothing else in this port had reason to keep them current,
+ * so this does, once a frame. */
+void game_sync_world(Game *g)
+{
+    uint16_t curset = (uint16_t)(g->scene & 0xFFC0);
+    for (int i = 0; i < g->act.n; i++) {
+        const Act *a = &g->act.a[i];
+        if (!(a->flags & ACT_CREATED) || a->world < 0 || a->world >= WS_COUNT)
+            continue;
+        uint8_t *p = g->vm.ws + a->world * WS_REC;
+        p[WS_SET]     = (uint8_t)(curset >> 8);
+        p[WS_SET + 1] = (uint8_t)curset;
+        int32_t v[3] = { a->actor.x, a->actor.y, a->actor.z };
+        for (int k = 0; k < 3; k++) {
+            uint8_t *q = p + WS_XPOS + k * 4;
+            q[0] = (uint8_t)(v[k] >> 24); q[1] = (uint8_t)(v[k] >> 16);
+            q[2] = (uint8_t)(v[k] >> 8);  q[3] = (uint8_t)v[k];
+        }
+        p[WS_ZFACE] = a->actor.facing;
+    }
 }
 
 /* ---- arriving ------------------------------------------------------- */
@@ -157,6 +314,17 @@ int game_enter(Game *g, uint16_t scene_id, int set_hint)
     g->scene    = scene_id;
     g->vm.scene = scene_id;
     g->last_cut_from = from_id;
+
+    /* And now the set fills up.  Everybody who was already here has his world
+     * record stamped with where he is first, because that is the field
+     * `ParseACT` reads to decide who does not belong - a character the host put
+     * down by hand still carries whatever set the disc gave him. */
+    game_sync_world(g);
+    game_parse_wst(g);
+    /* And again, because `ParseWST` has just stood people on a mesh: the
+     * record says roughly where, `actor_place` says exactly where, and the
+     * record is what everything else reads. */
+    game_sync_world(g);
     return 1;
 }
 
@@ -203,9 +371,24 @@ static int events_scan(Game *g, const Actor *act)
 
 void game_frame(Game *g, uint32_t rawpad)
 {
+    /* `pad_shot`, which is what COLLECT reads: the buttons that went down this
+     * frame rather than the ones that are held. */
+    uint32_t shot = rawpad & ~g->pad_prev;
+    g->pad_prev = rawpad;
+
     g->frame++;
     if (!g->have_set)
         return;
+
+    /* The inventory is modal, and that is not an interpretation: `obj_select`
+     * spins its own loop inside one call of the COLLECT module, drawing its
+     * own picture and reading the pad itself, and `update` in MAIN.S does not
+     * come round again until it returns.  So while a screen is up, this is the
+     * whole frame. */
+    if (collect_modal(&g->collect)) {
+        collect_frame(g, rawpad, shot);
+        return;
+    }
 
     /* 1. The script machine. */
     g->vm.pad = rawpad;
@@ -245,6 +428,17 @@ void game_frame(Game *g, uint32_t rawpad)
      * animation that moves them. */
     act_frame(&g->act, &g->set, rawpad, g->vm.ws);
 
+    /* 3a. And what `DeadControl` does on the one frame it takes a body out of
+     * the collision: everything that character was carrying falls out of his
+     * pockets and stands up as a world record again.  Most of the game's items
+     * arrive this way - 49 of the 99 collectables start in somebody's keeping,
+     * and none of those somebodies is Quentin. */
+    for (int i = 0; i < g->act.n; i++)
+        if (g->act.a[i].died) {
+            g->act.a[i].died = 0;
+            collect_drop_all(g, g->act.a[i].world);
+        }
+
     /* 3b. PPCOLL, which MAIN.S runs straight after the animation player and
      * before the 3D engine: who hit whom, and who is standing in whom. */
     combat_frame(&g->act, g->vm.ws);
@@ -256,4 +450,11 @@ void game_frame(Game *g, uint32_t rawpad)
         if (cut >= 0 && g->want_scene < 0)
             g->want_scene = cut;
     }
+
+    /* 5. COLLECT, which MAIN.S runs last of all - after the 3D engine, the
+     * bitmaps and the text.  It reads the `instpick` PPCOLL left behind and
+     * clears it, so an item offers itself on the frame you step into it and
+     * not on the frame after. */
+    game_sync_world(g);
+    collect_frame(g, rawpad, shot);
 }

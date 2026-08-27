@@ -32,6 +32,22 @@
  * Two rules keep it from being a free-for-all, both dated in COMBAT.GAS's own
  * history: **exactly one of the pair must be the player** (01/05/95, "prevent
  * Hunters killing each other"), and neither may be carrying `FSAShield`.
+ *
+ * The same pair loop carries a third job, added to the file on 09/03/95 -
+ * "also added COLLECTABLE code, to allow pickups".  A pair where **exactly
+ * one** of the two carries `WSTCollectable` does no combat at all; and if the
+ * other one is the player and their circles overlap, the item's table entry is
+ * written into `instpick`.  That word is the entire interface to the inventory
+ * (collect.h): COLLECT reads it at the end of the frame and clears it.
+ *
+ * Two details make it behave.  Only one item may claim `instpick` in a frame,
+ * so walking into a heap offers you one of them rather than all of them; and
+ * the item's own `PICKUP` flag is set while you stand inside it and cleared
+ * the frame you step out, so it offers itself once rather than every frame.
+ *
+ * Note what "exactly one" leaves out: two collectables inside each other are
+ * not a pickup.  They are two bodies, and they push each other apart like
+ * anything else.  docs/16-inventory.md.
  */
 #ifndef HL_COMBAT_H
 #define HL_COMBAT_H
@@ -49,6 +65,7 @@ typedef struct {
     long parries;
     long deaths;
     long bumps;                 /* pairs whose circles overlapped          */
+    long offered;               /* collectables that claimed instpick      */
     long moved_back;            /* characters undone by one                */
     long damage;
 } CombatStats;

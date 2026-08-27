@@ -55,6 +55,27 @@ typedef struct {
 #define WS_LIFE     30
 #define WS_FLAGS    31
 
+/* `wstParent` and `wstSheet` are addresses, and the resident code relocates
+ * both at startup - the world table from $15458 to $32660 and the sheets from
+ * $17458 to $34760.  What we read off the disc is the pre-relocation form, so
+ * a parent is an address in the $15458 table and these two turn it into an
+ * index and back.  Zero stays what it is in the original: **no owner**, which
+ * is a distinction an index alone cannot make, since the player is record 0. */
+#define WS_ADDR 0x15458u
+
+static inline int ws_owner_of(uint32_t addr)
+{
+    if (addr < WS_ADDR)
+        return -1;
+    uint32_t d = addr - WS_ADDR;
+    return d % WS_REC == 0 && d / WS_REC < WS_COUNT ? (int)(d / WS_REC) : -1;
+}
+
+static inline uint32_t ws_addr_of(int rec)
+{
+    return rec < 0 ? 0u : WS_ADDR + (uint32_t)rec * WS_REC;
+}
+
 #define WST_INANIMATE   (1u << 1)
 #define WST_AMMO        (1u << 3)
 #define WST_WEAPON      (1u << 4)
@@ -123,5 +144,16 @@ void sheets_bundles(Sheets *s, const long *offset, int count);
  * -1.  The chain is in the same order as the 1995 SHEET.S, so the first
  * aiFollowPlayer sheet is Ramirez. */
 int  sheets_by_behaviour(const Sheets *s, int command);
+
+/* Where a weapon sheet's animations begin inside the player's own bundle.
+ *
+ * `AICTRL.GAS`'s `.weapon_action` looks the animation number up in the sheet
+ * of whatever the player is holding before falling back to his own, and
+ * `COLLECT.GAS`'s `wpn` is what puts a sheet there - `animsheet`.  The player
+ * carries all of it in one bundle: his thirty, then one bank of 28 per weapon
+ * sheet in sheet order.  So the offset is the player's own count plus the
+ * counts of every weapon sheet before this one, and the sheet index is all it
+ * takes to find it.  Returns 0 for a sheet that is not one of them. */
+int  sheets_anim_bank(const Sheets *s, int sheet);
 
 #endif

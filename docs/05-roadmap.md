@@ -189,20 +189,43 @@ points, and the collision word that puts two bodies back out of each other.
 guard that reads the opponent's own joypad and answers his buttons with the
 same ones.
 
-```
-build/hlview --scene DUN1_CAM04 --char 0 --drive --fight --weapon 1
-frame   48: hunter is killed, life 0
-```
-
 `hlview --check-combat` is what says it holds: the fourteen animation roles in
 every bundle that carries a full bank, eleven duels in a real set every one of
 which ends with somebody dead, no life value ever rising, and two hunters
 standing inside each other's reach for 1,185 frames of 1,200 without taking a
 point off each other ([15-combat.md](15-combat.md)).
 
-What phase 5 still owes: **item pickup and inventory**, which is `PPCOLL`'s
-`COLLECTABLE` path and `DeadControl`'s dropping of what a character carried,
-and a projectile for the two `aiShoot` commands.
+**And the pickup and the inventory are in**, which was the phase's other half.
+`src/game/collect.c` is `COLLECT.GAS`: `instpick`, the modal screen and its five
+buttons, `acceptobj` and `dropobj`, `douse`'s `wstUsage` bits, and `chooseit`
+pointing `animsheet` at a weapon's own sheet - so `--weapon` is a thing he picks
+up rather than a flag. `DeadControl` drops what a dying character carried, which
+is how most of the disc's items reach a floor: **49 of the 99 collectables start
+in somebody's pocket** and none of those pockets is Quentin's.
+
+Underneath it, the thing that had been missing all along: `src/game/game.c` now
+runs `SETLOGIC.GAS`'s `GetSet` and `SCNLOGIC.GAS`'s four tests, so **a set fills
+itself from the world table** instead of from command-line flags. `DUN1` has two
+Hunters and three things on the floor because the table says so
+([16-inventory.md](16-inventory.md)).
+
+```
+build/hlview --check-inventory
+
+ParseWST over the 48 scene groups the sets name: 144 bodies, 0 records claimed twice
+pickup and drop: 55 collectables tried where their own group put them
+  55 offered themselves on exactly one frame and 55 went into the pocket
+  51 came back to the floor at his feet, 4 were left alone because their set
+  had raised WSB_COLLECT_PREVENT
+DeadControl: 34 characters died carrying 54 objects; 54 fell out, all 54
+  standing where he fell
+```
+
+What phase 5 still owes: **a projectile** for the two `aiShoot` commands, whose
+1,500-unit bank is applied as an ordinary blow; and one narrow fight bug -
+two characters squared up exactly face to face never land a blow, because
+`AIAttackCode`'s pause frames drop the buttons and `ActionCode` restarts the
+swing ([16-inventory.md](16-inventory.md) 16.10).
 
 ### Phase 6 — The game tells a story — **started**
 The script VM (60+ opcodes), a `.SCT` compiler (to rebuild scripts from the

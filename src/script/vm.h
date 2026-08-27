@@ -107,6 +107,11 @@ typedef struct {
     uint32_t scriptblock;       /* the CD block a film or a redbook names   */
     uint16_t scriptevent;       /* EVENT_TYPE + 1, or 0 when nothing waits  */
     int      used;              /* the "object being used" latch, -1 = none */
+    int      currws;            /* the record the inventory has on show, -1
+                                   for the bare hand.  A global the machine
+                                   and COLLECT share in the original too:
+                                   `force_pickup` writes it and COLLECT reads
+                                   it, which is the whole of `pickup`        */
     uint32_t pad;               /* pad_now, in the hardware bit numbering   */
     int      gameover;          /* what `reset` sets                        */
     int      redbook_done;      /* redbookdetect, for waitredbook           */
