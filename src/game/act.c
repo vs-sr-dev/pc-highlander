@@ -171,6 +171,11 @@ void act_frame(ActTable *t, const Set *s, uint32_t rawpad, uint8_t *ws)
                           ? &t->a[t->player] : NULL;
     const Actor *player = pl ? &pl->actor : NULL;
 
+    /* `ControlCode`'s reg1, loaded once before the loop and then carried down
+     * the table by AIRandomCode: one running word per frame, seeded with the
+     * frame count, shared by every AI character in it.  See ai.h. */
+    uint32_t rnd = (uint32_t)t->frame;
+
     /* ControlCode: the joypad for everybody, before anybody moves.
      *
      * The order of the tests is the original's and it matters.  Being hit
@@ -223,6 +228,7 @@ void act_frame(ActTable *t, const Set *s, uint32_t rawpad, uint8_t *ws)
         w.prev_pad    = a->ctl.pad;
         w.stance      = (uint8_t)(a->ctl.stance | (act_playing(a) ? FSA_PLAY : 0));
         w.status      = &a->status;
+        w.rnd         = &rnd;
         a->ctl.pad = ai_control(&a->ai, &a->actor, &w);
     }
 

@@ -213,9 +213,51 @@ A codebook entry is four Y and a signed U and V and paints a 2x2 block: **V1**
 doubles one entry over a whole 4x4, **V4** puts four entries in its four
 quadrants. An inter frame simply leaves the blocks it does not code alone. The
 colour is Cinepak's own, `R = Y + 2V`, `G = Y - U/2 - V`, `B = Y + 2U`, with the
-halving an arithmetic shift; the Jaguar's own decoder went straight to RGB16 and
-may well round differently, which is a question for a frame comparator against
-an emulator and not for this disc.
+halving an arithmetic shift.
+
+### And the Jaguar rounds
+
+That last step — 24-bit RGB down to the screen's 16 — was left open here for
+four sessions as "a question for a frame comparator against an emulator and not
+for this disc". Session 14 built the comparator and asked it.
+
+**It rounds.** Truncating, which is what this port did, puts every channel
+half a step low, and the mean error says so with no interpretation needed:
+
+```
+                        pixels identical    mean error R / G / B
+  ours truncated             17.4%          -0.519  -0.438  -0.487
+  ours rounded to nearest    53.7%          -0.007  -0.018  -0.021
+```
+
+That is frame 529 of the boot film, taken out of the Jaguar's own memory under
+BigPEmu and matched against the same frame out of this decoder. On frame 721 it
+is 19.3% against **84.2%**, and on frame 193, 11.6% against **91.8%**. Six
+frames were compared and rounding wins on every one of them; a mean error of
+−0.5 on all three channels is not a coincidence anybody needs to argue about.
+
+`src/media/cinepak.c` rounds now. What is left is second order and is stated
+rather than hidden: rounded, **79.7% of red values are exactly right and 98.3%
+are within one step**, but green and blue only 65–69% exactly and 89–92%
+within one. Red is the one channel Cinepak computes without a halving —
+`R = Y + 2V` against `G = Y - U/2 - V` — so the residue is where this decoder's
+arithmetic differs from the Jaguar's, not where its rounding does: ours clamps
+to eight bits per channel and *then* reduces, and the hardware had no eight-bit
+step to clamp at.
+
+Two things about the framebuffer came out of the same dumps, and both confirm
+the 1995 source against the retail disc:
+
+* the film player's screen really is **two buffers interleaved a phrase at a
+  time** — `CINEPAK.INC`'s `screen_gap 2` — and they hold the same picture
+  except where the newest frame has changed something;
+* the pixel is **R5 B5 G6**, which `COLLECT.GAS` writes down in the comment on
+  `darken_screen` as "RBG = 5:5:6". `cinepak.c` had it right all along; the
+  comparator did not, for one evening, and a blue vortex came out green.
+
+What did *not* survive the retail build are the addresses. `CINEPAK.INC` puts
+the screen at `$000C0000` and the `'FILM'` header at `$0010E000`; on the disc
+the header is not there at all, and the picture is found at `$0C8200`.
 
 Two details of the format only showed up because the disc uses them. A strip
 that sends no codebook of its own **continues the strip above it** — this

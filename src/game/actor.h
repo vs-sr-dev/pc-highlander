@@ -97,6 +97,36 @@ void actor_pose(const Bundle *b, const int8_t *angle, int facing,
  * compare. */
 void actor_extent(const Bundle *b, const ActorPose *pose, int32_t *lo, int32_t *hi);
 
+/* The sixteenth piece: what is in his hand.
+ *
+ * `EVENT.GAS`'s `changetomod` is blunt about it - "immediately change model 16
+ * of player character to object specified" - and it gets there by walking
+ * fifteen `next` pointers down the character's draw chain and rewriting the
+ * sixteenth entry's model pointer.  So the object in his hand is not a special
+ * kind of thing at all: it is one more piece of the character, hung on the
+ * skeleton like the other fifteen.
+ *
+ * Where it hangs, and how it is turned, come from two places that agree.  The
+ * right hand - piece 6, the one whose own origin is 140 - publishes exactly
+ * one origin point of its own, number **144**, and no other piece in any
+ * bundle on the disc publishes anything above 141.  And `ANIM.GAS` carries a
+ * routine called `swordcode`, "new code to track down and fix up the rotation
+ * data for the sword", which finds the draw entry with bit 12 of its status
+ * set and copies three rotation words into it **from the entry nine places
+ * earlier in the list**.  Nine back from the sixteenth is the seventh, which
+ * is piece 6, which is the right hand.
+ *
+ * So: position at origin 144, carried through the hand's own rotation the way
+ * every other joint is carried, and orientation copied from the hand outright
+ * - which it has to be, because orientations do not chain here and the
+ * animation records only fifteen sets of angles. */
+#define ACTOR_INHAND_ORIGIN 144
+
+/* Fills `out` with where a held object goes, given the pose of the fifteen.
+ * Returns 0 if this bundle publishes no origin 144, which is every bundle
+ * that is not a full-size character. */
+int actor_inhand(const Bundle *b, const ActorPose *pose, ActorPose *out);
+
 /* Puts the actor on the mesh at (x, z), or returns 0 if that is off it. */
 int  actor_place(Actor *a, const Set *s, int32_t x, int32_t z, int facing);
 

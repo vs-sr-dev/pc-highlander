@@ -258,11 +258,78 @@ no *bundle* in it, because `bundle_at` wants a model that hangs on no origin and
 publishes at least one, and a thing with no joints publishes none. Their slot
 holds a single model, exactly like an item's.
 
-## 16.9 What is checked
+## 16.9 The sixteenth piece, which is what he is holding
+
+Session 13 left this as the last thing between the inventory and looking like
+the game, and it needed one more file to close. `EVENT.GAS` says what happens:
+
+```
+changetomod:
+;-immediately- change model 16 of player character to object specified
+;lookup chartbl, with citworld = player, find model 1
+;find model 16 from that - change model ptr, to point to new model
+	moveq	#14,etemp5	;pointing to 16th after 15 loads
+```
+
+so the object in his hand is **not a separate kind of thing at all**: it is one
+more piece of the character, hung on the skeleton like the other fifteen, and
+picking something up is one store into the sixteenth draw entry's model
+pointer. `COLLECT.GAS` finds that entry a second way — "search thru draw data
+area for item with status bit 12 set" — and writes the same pointer into
+`modinhand`.
+
+Where it hangs and how it is turned come from two places that agree.
+
+**Where.** The right hand — piece 6, whose own origin is 140 — publishes
+exactly one origin point of its own, number **144**, and it is the only origin
+on the disc above 141. [14-characters.md](14-characters.md) 14.1 had already
+drawn it into the skeleton and called it "what the hand hands on to, the
+weapon"; this is the file that says what hangs there.
+
+**How.** `ANIM.GAS` carries a routine whose comment is the whole answer:
+
+```
+swordcode:  ; new code to track down and fix up the rotation data for the sword.
+	moveq	#6,temp3		; number that can definitely be skipped
+	...
+	moveq	#9,temp3		; count forward to the ninth entry after this one
+	...
+	btst	#12,localptr
+	jr	ne,.found
+```
+
+It walks two pointers down the draw list nine entries apart until the leading
+one reaches the entry with status bit 12 — the sword — and then copies **three
+rotation words from the trailing entry into it**. Nine back from the sixteenth
+is the seventh, which is piece 6, which is the right hand. So the held object
+takes the hand's own three angles, verbatim.
+
+It has to work that way. Orientations do not chain in this engine
+([14-characters.md](14-characters.md) 14.1) — every piece's angles are absolute
+and come from the animation — and the animation records **fifteen** sets of
+angles and no more, on all 285 records on track 5. A sixteenth piece has
+nowhere to get an orientation from except by copying one, and `swordcode` is
+the copy.
+
+```
+build/hlview --scene DUN1_CAM00 --char 0 --drive --weapon 2
+```
+
+now puts the sword in his hand, and taking `--weapon` off takes it out again:
+the same 56 pixels, and no others.
+
+Only Quentin has it. Of the fourteen bundles on track 5 that carry a full
+skeleton, **one publishes origin 144** — which is not an omission but the rule
+`changetomod` states in its own first line: *model 16 of **player** character*.
+
+## 16.10 What is checked
 
 ```
 build/hlview --check-inventory
 
+the sixteenth piece: 14 bundles with a skeleton, 1 publish origin 144 exactly
+  once, 1 of those from piece 6, whose own origin is 140; 0 other origins
+  above 141
 the world table: 197 records in use, 99 collectable, 7 of those weapons
   49 start in somebody's keeping and 0 are registered - nothing is in the world
   until ParseWST puts it there
@@ -292,23 +359,16 @@ only sees it because the harness walks the player to the far end of the mesh
 between one trial and the next — which it has to, because an item he has
 refused stays refused until he moves.
 
-## 16.10 Still open here
+## 16.11 Still open here
 
-* **Two characters squared up face to face never land a blow.** `AIAttackCode`
-  cycles attack, defend and pause, and on the pause frames it presses nothing —
-  which is faithful, `.pause` in `AICTRL.GAS` really does fall through with only
-  the rotate bits set. But dropping the buttons makes `ActionCode` pick the
-  stand row, which restarts the swing before it reaches the frame the blow is
-  drawn on. `--check-combat`'s duels land blows because it places the pair at
-  assorted angles and the `diff < 10` test forces a straight attack whenever one
-  of them is not squared up; `--drive --fight`, which places them exactly
-  opposite, never does. This is session 12's code and predates this session —
-  it reproduces unchanged at the previous commit — and it is a good candidate
-  for the frame comparator.
-* **The in-hand model is the 16th piece.** `EVENT.GAS`'s `changetomod` says so:
-  "immediately change model 16 of player character to object specified", found
-  by fifteen loads down the draw chain. The port has `inhand` and knows which
-  model it is; it does not yet hang it on him.
+* ~~**Two characters squared up face to face never land a blow.**~~ **Found and
+  fixed in session 14, and the cause was not the one guessed here.** The pause
+  frames are meant to be there; what was wrong is that there was a pause frame
+  after *every* attack frame. `AIRandomCode`'s running word is `ControlCode`'s
+  reg1, loaded with `framecount` before the loop and shared down the character
+  table — and this port had made it a per-character seed fed only its own
+  output, which with two people standing still settles into a two-frame cycle.
+  See [15-combat.md](15-combat.md) 15.6.
 * **Bit 5 of `wstUsage`**, "special script use item", is marked *not
   implemented* in 1995 and nothing sets it.
 * **The low byte of `cshBehaviour`** — 10, 20, 30, 40 or 250 — is still

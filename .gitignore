@@ -8,6 +8,9 @@ Highlander/
 reference/
 original/
 
+# The emulator, its disc and its dumps: BYOA like everything else above
+BigPEmuDEV/
+
 # Jaguar CD disc images
 *.jcd
 *.cdi

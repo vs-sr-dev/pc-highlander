@@ -1118,6 +1118,45 @@ static int check_inventory(void)
         return 0;
     }
 
+    /* ---- 0. the sixteenth piece ----------------------------------------- */
+
+    /* `changetomod` rewrites "model 16 of player character" by walking fifteen
+     * entries down the draw chain, and `swordcode` in ANIM.GAS copies that
+     * entry's three rotation words from the entry **nine places earlier**.
+     * Nine back from the sixteenth is the seventh - piece 6 - and the claim
+     * this port hangs a held object on is that piece 6 is the right hand and
+     * publishes origin 144.  It is a claim about the data, so ask the data:
+     * in every bundle that carries a full skeleton, exactly one piece may
+     * publish 144, it has to be piece 6, that piece's own origin has to be
+     * 140, and nothing anywhere may publish anything else above 141. */
+    int skeletons = 0, publish144 = 0, at6 = 0, stray = 0;
+    for (int i = 0; i < cast.ncast; i++) {
+        const Bundle *b = &cast.bundle[i];
+        if (b->npieces < 15)
+            continue;
+        skeletons++;
+        int found = 0;
+        for (int p = 0; p < b->npieces; p++) {
+            const Model *m = b->piece[p];
+            for (int k = 0; k < m->norigins; k++) {
+                int id = m->origin_id[k];
+                if (id == ACTOR_INHAND_ORIGIN) {
+                    found++;
+                    if (p == 6 && m->origin == 140)
+                        at6++;
+                } else if (id > 141) {
+                    stray++;
+                }
+            }
+        }
+        if (found == 1)
+            publish144++;
+    }
+    printf("the sixteenth piece: %d bundles with a skeleton, %d publish origin "
+           "144 exactly once, %d of those from piece 6, whose own origin is "
+           "140; %d other origins above 141\n",
+           skeletons, publish144, at6, stray);
+
     /* ---- 1. the table -------------------------------------------------- */
     Sheets sh;
     if (!sheets_load(&sh, path_boot)) {
@@ -1495,7 +1534,10 @@ static int check_inventory(void)
     }
 
     cast_free(&cast);
-    return 1;
+    /* One bundle publishes 144 and it is Quentin's, from piece 6.  That the
+     * other thirteen skeletons do not is the fact, not an omission: only the
+     * player is ever drawn holding anything. */
+    return publish144 == 1 && at6 == 1 && stray == 0;
 }
 
 static int check_script(void)
@@ -2296,13 +2338,92 @@ static int check_combat(void)
            "1,200, and %ld points of damage between them\n", together,
            crossfire);
 
+    /* 4: and the rhythm of a fight must not be a function of where the two of
+     * them are standing.
+     *
+     * `AIAttackCode` reads every one of its decisions - which button, and
+     * whether to attack, defend or pause next - out of `AIRandomCode`'s
+     * running word, and `ActionCode` restarts the animation whenever the
+     * logic-table row the joypad matches changes.  So a swing only reaches
+     * the frame the blow is drawn on if the machine stays in its attack state
+     * for a run of consecutive frames.
+     *
+     * `ControlCode` loads that word with `framecount` before the loop over
+     * the characters, which is the half that is easy to miss and the half
+     * that matters: without it the word is a function of the four
+     * coordinates alone, two characters squared up and standing still hand it
+     * the same four for ever, and it settles into a two-frame cycle - attack,
+     * pause, attack, pause, every run exactly one frame long, and the blow
+     * never drawn.  That is the face-to-face stand-off.
+     *
+     * So: freeze the pair, run the attack machine on its own for six hundred
+     * frames, and measure the longest run - twice, once feeding it its own
+     * output and once feeding it the frame count.  The first has to come out
+     * at one, or the check is not looking at the failure at all; the second
+     * has to be longer, or the fix has stopped working. */
+    long longest[2] = { 0, 0 };
+    for (int seeded = 0; seeded < 2; seeded++) {
+        Ai       ai;
+        Actor    self, foe;
+        uint16_t status = 0;
+        uint32_t prev   = 0;
+        uint32_t word   = 1;                 /* the word carried by hand */
+        long     run    = 0;
+
+        ai_init(&ai, AI_ATTACK_PLAYER);
+        memset(&self, 0, sizeof self);
+        memset(&foe,  0, sizeof foe);
+        /* Where `--scene DUN1_CAM04 --drive --fight` left them: 499 units
+         * apart, which is inside his two-metre reach, and exactly opposite. */
+        foe.x  = 1028;  foe.z  = -158;  foe.facing = 0;
+        self.x = 1028;  self.z =  341;  self.facing = 128;
+
+        for (long f = 1; f <= 600; f++) {
+            AiWorld  w;
+            /* seeded 0: the word is carried from frame to frame and nothing
+             * else feeds it, which is what a per-character seed amounts to.
+             * seeded 1: ControlCode's own, reloaded with the frame count. */
+            uint32_t rnd = seeded ? (uint32_t)f : word;
+            memset(&w, 0, sizeof w);
+            w.player      = &foe;
+            w.target_face = foe.facing;
+            w.prev_pad    = prev;
+            w.status      = &status;
+            w.rnd         = &rnd;
+            uint32_t pad = ai_control(&ai, &self, &w);
+            word = rnd;
+            run  = (pad & PAD(FIRE_C)) ? run + 1 : 0;
+            if (run > longest[seeded])
+                longest[seeded] = run;
+            prev = pad;
+        }
+    }
+    printf("the running word: frozen face to face, the longest run of "
+           "consecutive attack frames is %ld carried from frame to frame and "
+           "%ld reloaded with the frame count\n", longest[0], longest[1]);
+
     io_free(&boot);
 
     return wrong == 0 && duels > 0 && resolved == duels && rose == 0 &&
-           armed_wins > bare_wins && together > 0 && crossfire == 0;
+           armed_wins > bare_wins && together > 0 && crossfire == 0 &&
+           longest[0] == 1 && longest[1] > 1;
 }
 
 /* ---- drawing a character ------------------------------------------- */
+
+/* A world record's model, by the route the inventory screen already uses: the
+ * record wears a sheet, the sheet has a bundle, and an object's bundle is one
+ * piece.  It is how COLLECT puts a thing on its turntable and it is how the
+ * hand gets what it is holding. */
+static const Model *record_model(const Sheets *sh, const Cast *c, int rec)
+{
+    if (rec < 0 || rec >= WS_COUNT)
+        return NULL;
+    int s = sheets_of_addr(sh, sh->world[rec].sheet);
+    int b = s >= 0 && s < CSH_MAX ? c->of_sheet[s] : -1;
+    return b >= 0 && b < c->ncast && c->bundle[b].npieces > 0
+         ? c->bundle[b].piece[0] : NULL;
+}
 
 static void draw_actor(R3dTarget *t, const Bundle *b, const ActorPose *pose,
                        const SceneCam *cam, const R3dOpts *o,
@@ -3074,6 +3195,21 @@ int main(int argc, char **argv)
                 actor_pose(b, ang, ac->actor.facing, root, pose);
                 int fa, te, dr;
                 draw_actor(&target, b, pose, &scene.cam, &opts, &fa, &te, &dr);
+
+                /* And the sixteenth, which only the player has: `changetomod`
+                 * rewrites "model 16 of player character", and `chooseit` is
+                 * the only thing that calls it.  Nobody else on the disc is
+                 * ever drawn holding anything. */
+                if (i == game.act.player && game.collect.inhand >= 0) {
+                    const Model *held = record_model(&game.sheets, &cast,
+                                                     game.collect.inhand);
+                    ActorPose hand;
+                    if (held && actor_inhand(b, pose, &hand)) {
+                        R3dXform x;
+                        r3d_place(&x, &scene.cam, hand.rot, hand.pos);
+                        r3d_draw_model(&target, held, &x, &opts);
+                    }
+                }
             }
         }
 

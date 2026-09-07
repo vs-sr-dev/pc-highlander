@@ -218,6 +218,36 @@ both characters' coordinates and rolled a byte at a time, and every `btst` in
 `AIAttackCode` reads the result. The rhythm of a fight is a hash of where the
 two of them are standing: not periodic, and not random either.
 
+### And the word belongs to the frame, not to the character
+
+Session 14 had to come back to this paragraph, because the port had read it
+one word short. `ControlCode` loads `framecount` into reg1 **once, before the
+loop over the characters**; `AIRandomCode` then stirs that word and leaves it
+in reg1 for whoever is processed next. So there is one running word per frame,
+re-seeded from the frame counter every frame and shared down the table within
+it — and this port had made it a per-character word, set to 1 at birth and fed
+only its own output afterwards.
+
+That is not a shade of difference. Deprived of the frame count the word is a
+function of the four coordinates alone, and two characters squared up and
+standing still hand it the same four for ever: it settles into a **two-frame
+cycle**, `actStatus` goes attack, pause, attack, pause, and — because a change
+of logic-table row restarts the animation — the swing is thrown away one frame
+after it starts, for ever. That is the whole of the face-to-face stand-off
+16.10 recorded, and it is why the diagnosis there ("the AI's pause frames
+restart the swing") was right about the symptom and wrong about the cause: the
+pause frames are meant to be there. What is not meant to be there is a pause
+frame after *every* attack frame.
+
+```
+  --drive --fight, before          --drive --fight, after
+  frame  7  attack  anim 21        frame 15  attack  anim 21
+  frame  8  pause   anim  6        frame 16  attack  anim 21
+  frame  9  attack  anim 21          ...  eight frames of it ...
+  frame 10  pause   anim  6        frame 22  player is hit, life 235
+  ...for ever...
+```
+
 The defending state is the good part. It reads **the opponent's own
 `actJoypad`** — found by searching the character table for the record whose
 `actWorld` matches the target — and, if he is pressing a fire button and not
@@ -260,39 +290,57 @@ build/hlview --check-combat
 ```
 animation roles: 6 bundles with a full bank, 0 departures from the convention
 hunter: sheet 2, bundle 1 with 28 animations, world records 3 and 4
-duels: 11 fought one on one, 11 ended with somebody dead, 617 frames each
-  the hunter died 4 of the 5 times the player had a weapon and 1 of the 6 he
+duels: 11 fought one on one, 11 ended with somebody dead, 277 frames each
+  the hunter died 3 of the 5 times the player had a weapon and 2 of the 6 he
   had his hands
   0 life values that went up, which is what says no life byte wrapped
-  two hunters within reach of each other for 1185 frames of 1,200, and 0
+  two hunters within reach of each other for 1118 frames of 1,200, and 0
   points of damage between them
+the running word: frozen face to face, the longest run of consecutive attack
+  frames is 1 carried from frame to frame and 3 reloaded with the frame count
 ```
 
-Three things, none of them "it looked like a fight". The **fourteen animation
+Four things, none of them "it looked like a fight". The **fourteen animation
 roles**, in every bundle, which is what licenses driving all of them through
 one table. **Eleven duels in a real set at eleven different ranges and angles,
 every one of them ending with somebody dead**, no life value ever rising — a
 byte that wrapped would show up there and nowhere else — and the weapon
 deciding the outcome, which is the game's own economy: bare hands hit for 2 and
 a hunter hits for 20. And **two hunters standing inside each other's reach for
-1,185 frames out of 1,200 without taking a single point off each other**, which
+1,118 frames out of 1,200 without taking a single point off each other**, which
 is COMBAT.GAS's rule of 1/05/95 and the one thing here that a bug would quietly
 undo.
+
+The fourth is session 14's, and it measures the failure rather than asserting
+its absence. Freeze a pair face to face, run the attack machine on its own for
+six hundred frames, and count the longest run of consecutive frames on which it
+presses an attack — twice: once feeding the running word its own output, and
+once reloading it with the frame count the way `ControlCode` does. **One and
+three.** The first number has to be 1 or the check is not looking at the
+failure at all; the second has to be larger or the fix has stopped working. A
+swing that is restarted every other frame never reaches the frame the blow is
+drawn on, and 1 is what that looks like from here.
+
+The duels resolve in 277 frames now where they took 617 before the word was
+put right, which is the same fact from the other side: the hunters were
+spending most of a duel restarting animations.
 
 In the game rather than in the harness:
 
 ```
-build/hlview --scene DUN1_CAM04 --char 0 --drive --fight --weapon 1
+build/hlview --scene DUN1_CAM04 --char 0 --drive --fight --weapon 1 --pad a:600
 
 hunter: world 3, sheet 2, attack player, bundle 1 with 28 animations
 weapon 1: animations 30..57 of the bundle
-frame   17: hunter is hit, life 40
-frame   39: hunter is hit, life 10
-frame   48: hunter is killed, life 0
+frame    8: hunter is hit, life 40
+frame   17: hunter is hit, life 10
+frame   39: hunter is killed, life 0
 ```
 
 and with `--weapon` left off he loses, because a man hitting for 2 against one
-hitting for 20 loses. That is phase 5's success criterion.
+hitting for 20 loses. That is phase 5's success criterion. Take the `--pad`
+off and stand there instead, and **the hunter now wins** — `frame 22: player is
+hit` — which he never once managed before this session.
 
 ## 15.9 What the table cannot see, and why it needs no lock
 

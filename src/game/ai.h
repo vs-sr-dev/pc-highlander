@@ -62,7 +62,6 @@ typedef struct {
                                    the first is which character             */
     int      behaviour;         /* the sheet's cshBehaviour, which aiDefault
                                    loads back into the command              */
-    uint32_t seed;              /* reg1, the running random word            */
     int32_t  dist2;             /* how far the target was, last frame       */
 } Ai;
 
@@ -86,7 +85,22 @@ typedef struct {
     uint8_t      stance;        /* citStance: FSAPlay and FSATurn gate it   */
     uint8_t      target_face;   /* the target's own facing                  */
     uint16_t    *status;        /* actStatus, which the machine advances    */
+    uint32_t    *rnd;           /* reg1: see below                          */
 } AiWorld;
+
+/* `rnd` is `ControlCode`'s reg1, and it belongs to the *frame* rather than to
+ * the character.  ControlCode loads `framecount` into it once, before the
+ * loop over the active characters; AIRandomCode then stirs it with both
+ * characters' coordinates and leaves it there for whoever is processed next.
+ * So it is re-seeded from the frame counter every frame and shared down the
+ * table within one.
+ *
+ * That is not a detail.  A per-character word carried from frame to frame
+ * settles into a short cycle the moment nobody moves - two characters squared
+ * up and standing still feed it the same four coordinates for ever - and the
+ * attack machine then alternates attack, pause, attack, pause on a two-frame
+ * period, which restarts the swing before it reaches the frame the blow is
+ * drawn on.  Re-seeding from the frame count is what stops that. */
 
 /* `ComputerControl`: the joypad this character presses this frame. */
 uint32_t ai_control(Ai *ai, const Actor *self, const AiWorld *w);

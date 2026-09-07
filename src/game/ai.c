@@ -75,12 +75,14 @@ static uint32_t ai_rotate(uint32_t pad, uint8_t facing, uint8_t want)
     return pad | (diff < 0 ? PAD(JOY_LEFT) : PAD(JOY_RIGHT));
 }
 
-/* AIRandomCode: the seed is stirred with the four coordinates every frame.
+/* AIRandomCode: the running word is stirred with the four coordinates.
  * `imultn`/`imacn` are the Jaguar's 16-bit multiply-accumulate, so the
- * products are of the low halves. */
-static void ai_random(Ai *ai, int32_t tx, int32_t tz, int32_t sx, int32_t sz)
+ * products are of the low halves.  The word is the frame's, not the
+ * character's - see the note on `AiWorld.rnd`. */
+static void ai_random(uint32_t *rnd, int32_t tx, int32_t tz,
+                      int32_t sx, int32_t sz)
 {
-    int32_t r = (int32_t)ai->seed;
+    int32_t r = (int32_t)*rnd;
     r = (int16_t)r * (int16_t)r + (int16_t)tx * (int16_t)tz
                                 + (int16_t)sx * (int16_t)sz;
     uint32_t s = (uint32_t)r;
@@ -89,7 +91,7 @@ static void ai_random(Ai *ai, int32_t tx, int32_t tz, int32_t sx, int32_t sz)
         s ^= (uint32_t)v[i];
         s = (s >> 8) | (s << 24);
     }
-    ai->seed = s;
+    *rnd = s;
 }
 
 /* ---- the commands --------------------------------------------------- */
@@ -99,7 +101,6 @@ void ai_init(Ai *ai, int behaviour)
     memset(ai, 0, sizeof *ai);
     ai->behaviour = behaviour;
     ai->command   = behaviour;
-    ai->seed      = 1;
     ai->dist2     = 0;
 }
 
@@ -144,11 +145,19 @@ static uint32_t ai_keep(const AiWorld *w, uint32_t pad)
 
 /* The three states `actStatus` cycles through, and the bits that pick the next
  * one.  They come out of `AIRandomCode`, which is easy to miss: `ControlCode`
- * loads `framecount` into reg1 at the top of the loop, and AIRandomCode then
- * *overwrites* reg1 with that frame count squared, mixed with both characters'
- * coordinates and rolled a byte at a time.  Every `btst` in AIAttackCode reads
- * that word, so the rhythm of a fight is a hash of where the two of them are
- * standing - which is neither periodic nor, strictly, random. */
+ * loads `framecount` into reg1 *before* the loop over the characters, and
+ * AIRandomCode then overwrites reg1 with that word squared, mixed with both
+ * characters' coordinates and rolled a byte at a time.  Every `btst` in
+ * AIAttackCode reads it, so the rhythm of a fight is a hash of the frame
+ * number and of where the two of them are standing - which is neither
+ * periodic nor, strictly, random.
+ *
+ * The frame number is the half that matters.  Without it the word is a
+ * function of four coordinates alone, and two characters standing still hand
+ * it the same four for ever: it settles into a two-frame cycle, the machine
+ * goes attack, pause, attack, pause, and the swing is restarted before it
+ * reaches the frame the blow is drawn on.  That is the whole of the
+ * face-to-face stand-off. */
 #define AI_ATTACK  0
 #define AI_DEFEND  1
 #define AI_PAUSE   2
@@ -156,8 +165,8 @@ static uint32_t ai_keep(const AiWorld *w, uint32_t pad)
 /* AIAttackCode's and AIShootCode's tail: everything from "he is inside my
  * reach" onwards.  `melee` is whether this is the melee version, which is the
  * one that also defends. */
-static uint32_t ai_fight(Ai *ai, const Actor *self, const AiWorld *w,
-                         uint32_t pad, int melee)
+static uint32_t ai_fight(const Actor *self, const AiWorld *w,
+                         uint32_t pad, int melee, uint32_t rnd)
 {
     uint16_t dummy = 0;
     uint16_t *status = w->status ? w->status : &dummy;
@@ -183,10 +192,10 @@ static uint32_t ai_fight(Ai *ai, const Actor *self, const AiWorld *w,
     if (*status == AI_ATTACK) {
         /* Two attacks: the same word picks which. */
         pad |= PAD(FIRE_C);
-        if (!(ai->seed & 2))
+        if (!(rnd & 2))
             pad |= PAD(FIRE_B);
-        *status = (ai->seed & 0x10) ? AI_ATTACK
-                : (ai->seed & 0x20) ? AI_DEFEND : AI_PAUSE;
+        *status = (rnd & 0x10) ? AI_ATTACK
+                : (rnd & 0x20) ? AI_DEFEND : AI_PAUSE;
         return pad;
     }
     if (melee && *status == AI_DEFEND) {
@@ -197,17 +206,19 @@ static uint32_t ai_fight(Ai *ai, const Actor *self, const AiWorld *w,
                                         PAD(FIRE_B) | PAD(FIRE_C));
         if (!(his & PAD(JOY_DOWN)) && (his & ~PAD(JOY_DOWN)))
             pad |= his | PAD(JOY_DOWN);
-        *status = (ai->seed & 0x10) ? AI_DEFEND : AI_PAUSE;
+        *status = (rnd & 0x10) ? AI_DEFEND : AI_PAUSE;
         return pad;
     }
     /* The pause, which is what makes a fight readable rather than a blur. */
-    *status = (ai->seed & 0x10) ? AI_ATTACK : (melee ? AI_DEFEND : AI_ATTACK);
+    *status = (rnd & 0x10) ? AI_ATTACK : (melee ? AI_DEFEND : AI_ATTACK);
     return pad;
 }
 
 uint32_t ai_control(Ai *ai, const Actor *self, const AiWorld *w)
 {
     const Actor *player = w->player, *person = w->person;
+    uint32_t     spare  = 0;
+    uint32_t    *rnd    = w->rnd ? w->rnd : &spare;
 
     if (ai->command == AI_DEFAULT) {
         /* AIDefault does not act: it copies the sheet's own behaviour into
@@ -228,7 +239,7 @@ uint32_t ai_control(Ai *ai, const Actor *self, const AiWorld *w)
 
     if (ai->command == AI_ATTACK_PERSON || ai->command == AI_ATTACK_PLAYER ||
         ai->command == AI_SHOOT_PERSON  || ai->command == AI_SHOOT_PLAYER)
-        ai_random(ai, tx, tz, self->x, self->z);
+        ai_random(rnd, tx, tz, self->x, self->z);
 
     uint32_t pad = ai_rotate(0, self->facing, ai_angle(dx, dz));
 
@@ -281,11 +292,11 @@ uint32_t ai_control(Ai *ai, const Actor *self, const AiWorld *w)
             if (w->stance & FSA_PLAY)
                 return ai_keep(w, pad);
             pad |= PAD(JOY_UP);
-            if (!(ai->seed & 1))
+            if (!(*rnd & 1))
                 pad |= PAD(JOY_DOUBLE);
             return pad;
         }
-        return ai_fight(ai, self, w, pad, melee);
+        return ai_fight(self, w, pad, melee, *rnd);
     }
     }
     return pad;

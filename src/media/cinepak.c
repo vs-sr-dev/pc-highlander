@@ -264,13 +264,30 @@ int cinepak_frame(Cinepak *c, const uint8_t *d, size_t size)
     return CVID_OK;
 }
 
+/* Into the Jaguar's RGB16, which is **R5 B5 G6** - `COLLECT.GAS`'s own comment
+ * on `darken_screen`, "RBG = 5:5:6".
+ *
+ * And it **rounds**.  9.5 left that as a question for a frame comparator, and
+ * session 14 asked it: a frame of the boot film taken out of the Jaguar's own
+ * memory under BigPEmu, against the same frame out of this decoder.  Truncated
+ * the way this used to do, 16.9% of the pixels matched and every channel came
+ * out half a step low - mean error -0.51, -0.47, -0.42.  Rounded to nearest,
+ * 49.6% match and the mean error on all three channels is 0.000 exactly.
+ *
+ * Half a step is not an opinion, and neither is a mean of zero to three
+ * decimals.  `tools/emu/cmpfb.py` is the measurement and prints both. */
 void cinepak_rgb16(const Cinepak *c, uint16_t *out)
 {
     const uint8_t *p = c->rgb;
     int n = c->w * c->h;
 
-    for (int i = 0; i < n; i++, p += 3)
-        out[i] = (uint16_t)(((p[0] >> 3) << 11) |    /* R5 */
-                            ((p[2] >> 3) <<  6) |    /* B5 */
-                             (p[1] >> 2));           /* G6 */
+    for (int i = 0; i < n; i++, p += 3) {
+        unsigned r = ((unsigned)p[0] + 4) >> 3;      /* R5 */
+        unsigned b = ((unsigned)p[2] + 4) >> 3;      /* B5 */
+        unsigned g = ((unsigned)p[1] + 2) >> 2;      /* G6 */
+        if (r > 31) r = 31;
+        if (g > 63) g = 63;
+        if (b > 31) b = 31;
+        out[i] = (uint16_t)((r << 11) | (b << 6) | g);
+    }
 }

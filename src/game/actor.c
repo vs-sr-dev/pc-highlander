@@ -107,6 +107,26 @@ void actor_pose(const Bundle *b, const int8_t *angle, int facing,
     }
 }
 
+int actor_inhand(const Bundle *b, const ActorPose *pose, ActorPose *out)
+{
+    for (int i = 0; i < b->npieces; i++) {
+        const Model *m = b->piece[i];
+        for (int k = 0; k < m->norigins; k++) {
+            if (m->origin_id[k] != ACTOR_INHAND_ORIGIN)
+                continue;
+            const int16_t *o = MODEL_ORIGIN(m, k);
+            int32_t v[3] = { o[0], o[1], o[2] }, d[3];
+            rotate(pose[i].rot, v, d);
+            for (int j = 0; j < 9; j++)
+                out->rot[j] = pose[i].rot[j];
+            for (int j = 0; j < 3; j++)
+                out->pos[j] = pose[i].pos[j] + d[j];
+            return 1;
+        }
+    }
+    return 0;
+}
+
 void actor_extent(const Bundle *b, const ActorPose *pose, int32_t *lo, int32_t *hi)
 {
     int32_t l = 0x7FFFFFFF, h = -0x7FFFFFFF;
