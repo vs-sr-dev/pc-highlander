@@ -258,6 +258,8 @@ Z-buffer**, plus **Cinepak** full-motion video and **Red Book** CD audio.
 | [docs/13-viewer.md](docs/13-viewer.md) | The viewer: the view transform, the Z-buffer convention, the rasteriser, the floor |
 | [docs/14-characters.md](docs/14-characters.md) | The character: the skeleton, the pose, movement over the mesh, the camera cuts |
 | [docs/15-combat.md](docs/15-combat.md) | Combat: PPCOLL, the hit frames, and the weapon banks |
+| [docs/16-inventory.md](docs/16-inventory.md) | The pickup, the inventory screen, and who is in a set |
+| [docs/17-jaguarkit.md](docs/17-jaguarkit.md) | jaguarkit: the Jaguar part of this port, checked on four more discs |
 | [docs/sessions/](docs/sessions/) | Work log, one note per session |
 
 ## The engine
@@ -282,6 +284,21 @@ build/hlview --check-script             # every script on the disc, run
 ```
 
 More in [src/README.md](src/README.md).
+
+## jaguarkit
+
+[`jaguarkit/`](jaguarkit/) is what in this port is Jaguar rather than
+Highlander — the disc (`.jcd` and Redump `.cue`), the 68000 and RISC
+disassemblers, the register map, the Cinepak films in Python and C, and
+BigPEmu as an oracle — checked on Baldies, Battle Morph, Iron Soldier 2 and
+Myst as well as this disc. It lives here until a second Jaguar port splits it
+out ([docs/17-jaguarkit.md](docs/17-jaguarkit.md)).
+
+```
+python -m jaguarkit.disc <image.cue>                        tracks, headers, boot
+python -m jaguarkit.disc <image.jcd> --same-as <image.cue>  two images compared
+python -m jaguarkit.film <image.cue> --track 7 --check      every film frame
+```
 
 ## Tools
 
