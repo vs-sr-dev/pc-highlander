@@ -7,7 +7,7 @@ with a decoder in Python and in C, and BigPEmu as an oracle.
 
 The same idea as [wiikit](https://github.com/vs-sr-dev/wiikit),
 [saturnkit](https://github.com/vs-sr-dev/saturnkit) and
-[ps2kit](https://github.com/vs-sr-dev/pc-extermination/tree/main/ps2kit),
+[ps2kit](https://github.com/vs-sr-dev/ps2kit),
 for the Jaguar. Each Jaguar game has its own engine and formats, but a large
 part of every port is the *same* work: the same two-session disc with no
 filesystem, the same Atari data headers, the same 68000 talking to the same
@@ -35,11 +35,11 @@ several of Highlander's constants into parameters: see *Checks* below.
 
 ## Using it
 
-For now jaguarkit lives inside pc-highlander, at `jaguarkit/`, the way ps2kit
-lives inside pc-extermination: one Jaguar game does not yet make a platform.
-When a second Jaguar port begins it is split out with its history
-(`git subtree split --prefix=jaguarkit`), as wiikit was out of pc-victorious,
-and every port then takes it as a git submodule at `jaguarkit/`.
+For now jaguarkit lives inside pc-highlander, at `jaguarkit/`: one Jaguar
+game does not yet make a platform. When a second Jaguar port begins it is
+split out with its history (`git subtree split --prefix=jaguarkit`), as
+wiikit was out of pc-victorious and ps2kit out of pc-extermination, and
+every port then takes it as a git submodule at `jaguarkit/`.
 
 Either way it sits at the port's root, so that `python -m jaguarkit.…` works
 from there and an engine can compile `jaguarkit/runtime/*.c`.
