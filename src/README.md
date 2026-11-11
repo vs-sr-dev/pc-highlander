@@ -66,9 +66,10 @@ build/hlview --scene SHANR1_CAM00 --char 0 --drive  ...and its script plays one
 build/hlview --help
 ```
 
-It reads the tracks as `tools/jcd/jcdinfo.py --extract` leaves them, in
-`assets/tracks/`, and `assets/manifest.json` for the names — nothing is
-pre-converted, the scene decode and the model parse are the engine's own.
+It reads the tracks as `python -m jaguarkit.disc IMAGE --extract` leaves them,
+in `assets/kit_tracks/`, from `TRACK_ORIGIN` (`util/io.h`), and
+`assets/manifest.json` for the names. Nothing is pre-converted: the scene
+decode and the model parse are the engine's own.
 
 What the viewer settled, and what it left open, is
 [docs/13-viewer.md](../docs/13-viewer.md) and, for the characters,

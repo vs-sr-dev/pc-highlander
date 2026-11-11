@@ -49,10 +49,17 @@ bytes after.
 That held only with track 7 as the kit extracts it. On `jcdinfo.py`'s file,
 which begins 160 bytes into the track, the kit's block rule (where the sync
 pad starts) put films 10 and 35 one block early. The scripts say 38,406 and
-100,863. So `hlview` now has `--kit DIR` (default `assets/kit_tracks`) and
-reads the films from there. Taking every track from the kit breaks six checks,
-because their readers count offsets in `jcdinfo.py`'s files. They move one
-track at a time.
+100,863.
+
+Then the rest of the engine followed. Taking every track from the kit broke
+six checks, but not because the readers were wrong. The kit's file is
+`jcdinfo.py`'s with 160 bytes in front: the `ATRI` lead-in, the Atari header
+and the sync pad. Past those the bytes are the same, on every data track. So
+`io_read_track` reads a kit track from `TRACK_ORIGIN` = 160, and every offset
+stays where it was, the manifest's included. `hlview --tracks` now means the
+kit's extraction (default `assets/kit_tracks`). All eight checks print the
+same bytes, and so do the first, the last and one more of the 672 backdrops,
+which no check reads.
 
 ## TODO for session 17
 
@@ -61,11 +68,12 @@ Session 15's list stands, with item 3 under way:
 1. **The way in**: power-on to the first playable frame and back
    (session 15, item 1).
 2. **Sound** (session 15, item 2).
-3. **The rest of the port onto the kit.** Tracks 2, 3, 5 and the others read
-   from the kit's extraction, one at a time, with the checks that read each
-   one as the test. Then `tools/jcd` goes, and `tools/m68k`, `tools/gpu`,
-   `tools/cinepak` and `tools/emu` give way to the kit's modules. Fix the GPU
-   module offset in the README and 08 (`0x36e90`) on the way.
+3. **The Python side onto the kit.** The engine is done. `tools/jcd` goes,
+   and `tools/m68k`, `tools/gpu`, `tools/cinepak`, `tools/emu` and the
+   extractors behind the manifest give way to the kit's modules or read from
+   `TRACK_ORIGIN`. `tools/manifest.py` rebuilt from kit tracks must produce
+   the same `manifest.json`. Fix the GPU module offset in the README and 08
+   (`0x36e90`) on the way.
 4. **What the player sees.** For the saves, 18.2 now says what the original
    keeps: settings, game state, the scene, and the world table.
 5. **The probe on the game**, then 6. **the playthrough**, as before.

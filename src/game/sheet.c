@@ -27,7 +27,7 @@ static int inside(const Sheets *s, long off, long len)
 int sheets_load(Sheets *s, const char *track2)
 {
     memset(s, 0, sizeof *s);
-    s->file = io_read(track2);
+    s->file = io_read_track(track2);
     if (!s->file.data)
         return 0;
 

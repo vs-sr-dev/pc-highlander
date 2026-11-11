@@ -59,20 +59,13 @@ typedef struct {
 static char path_pict[512], path_boot[512], path_t5[512], path_set[512];
 static char path_film[512];
 
-/* Tracks as jaguarkit extracts them (`python -m jaguarkit.disc IMAGE
- * --extract DIR`): whole, from the track's block 0, so a block a script names
- * is a block in the file.  The films read from here; the other tracks still
- * come from jcdinfo.py's cut, 160 bytes further in, and move one at a time,
- * each when the checks that read it say it held (docs/17-jaguarkit.md). */
-static const char *kit_dir = "assets/kit_tracks";
-
 static void paths(const char *dir)
 {
-    snprintf(path_pict, sizeof path_pict, "%s/track04_pict.bin", dir);
-    snprintf(path_boot, sizeof path_boot, "%s/track02_00004000.bin", dir);
-    snprintf(path_t5,   sizeof path_t5,   "%s/track05_data.bin", dir);
-    snprintf(path_set,  sizeof path_set,  "%s/track03_data.bin", dir);
-    snprintf(path_film, sizeof path_film, "%s/track07_1111.bin", kit_dir);
+    snprintf(path_pict, sizeof path_pict, "%s/track04_PICT.bin", dir);
+    snprintf(path_boot, sizeof path_boot, "%s/track02_boot.bin", dir);
+    snprintf(path_t5,   sizeof path_t5,   "%s/track05_DATA.bin", dir);
+    snprintf(path_set,  sizeof path_set,  "%s/track03_DATA.bin", dir);
+    snprintf(path_film, sizeof path_film, "%s/track07_1111.bin", dir);
 }
 
 /* ---- the manifest ------------------------------------------------- */
@@ -243,7 +236,7 @@ static int models_open(ModelSet *ms, const char *spec, int *index)
         fprintf(stderr, "unknown model source '%s' - try boot:N or track5:N\n", src);
         return 0;
     }
-    ms->file = io_read(path);
+    ms->file = io_read_track(path);
     if (!ms->file.data) {
         fprintf(stderr, "cannot read %s\n", path);
         return 0;
@@ -288,7 +281,7 @@ static int cast_open(Cast *c)
     memset(c, 0, sizeof *c);
     if (!models_open(&c->ms, "track5", &(int){0}))
         return 0;
-    c->file = io_read(path_t5);
+    c->file = io_read_track(path_t5);
     if (!c->file.data)
         return 0;
     c->nanims = anim_scan(c->file.data, c->file.size, &c->anim);
@@ -1549,7 +1542,7 @@ static int check_inventory(void)
 
 static int check_script(void)
 {
-    Blob boot = io_read(path_boot);
+    Blob boot = io_read_track(path_boot);
     if (!boot.data) {
         fprintf(stderr, "cannot read %s\n", path_boot);
         return 0;
@@ -2203,7 +2196,7 @@ static int check_combat(void)
     printf("hunter: sheet %d, bundle %d with %d animations, world records %d "
            "and %d\n", hs, hb, c_nanim(&cast, hb), hw, hw2);
 
-    Blob boot = io_read(path_boot);
+    Blob boot = io_read_track(path_boot);
     const uint8_t *world = boot.data
                          ? boot.data + (0x15458 - 0x5000 + 0x12600) : NULL;
     static uint8_t ws[WS_COUNT * WS_REC];
@@ -2454,8 +2447,7 @@ static void usage(void)
     puts(
 "hlview - the Highlander engine, phases 3 and 4\n"
 "\n"
-"  --tracks DIR      extracted tracks (default assets/tracks)\n"
-"  --kit DIR         tracks as jaguarkit extracts them: the films\n"
+"  --tracks DIR      the tracks as jaguarkit extracts them\n"
 "                    (default assets/kit_tracks)\n"
 "  --manifest FILE   default assets/manifest.json\n"
 "  --scene NAME      a scene by name (CA_CAM03) or #index\n"
@@ -2557,7 +2549,7 @@ static uint32_t pad_at(int frame)
 
 int main(int argc, char **argv)
 {
-    Args a = { "assets/tracks", "assets/manifest.json", NULL, NULL, NULL, NULL, 0, NULL,
+    Args a = { "assets/kit_tracks", "assets/manifest.json", NULL, NULL, NULL, NULL, 0, NULL,
                0, 0, 0, 0, 1, 3, 0, 0, 0,
                -1, 0, -1, 0, 0, 0, 0,
                0, {0,0,0}, 0, {0,0,0},
@@ -2567,7 +2559,6 @@ int main(int argc, char **argv)
     for (int i = 1; i < argc; i++) {
         const char *v = i + 1 < argc ? argv[i + 1] : NULL;
         if      (!strcmp(argv[i], "--tracks")   && v) a.tracks = argv[++i];
-        else if (!strcmp(argv[i], "--kit")      && v) kit_dir = argv[++i];
         else if (!strcmp(argv[i], "--manifest") && v) a.manifest = argv[++i];
         else if (!strcmp(argv[i], "--scene")    && v) a.scene = argv[++i];
         else if (!strcmp(argv[i], "--model")    && v) a.model = argv[++i];
@@ -2774,7 +2765,7 @@ int main(int argc, char **argv)
     int scene_index = -1;
     int have_scene = 0;
     if (a.scene) {
-        Blob boot = io_read(path_boot);
+        Blob boot = io_read_track(path_boot);
         if (!boot.data) {
             fprintf(stderr, "cannot read %s\n", path_boot);
             return 1;

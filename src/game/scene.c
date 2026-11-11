@@ -30,7 +30,7 @@ int scene_load(Scene *s, const char *pict_path, int n, const uint8_t key[8192])
 {
     static uint8_t slot[SCENE_SLOT];
 
-    if (n < 0 || !io_read_at(pict_path, (long)n * SCENE_SLOT, slot, SCENE_SLOT))
+    if (n < 0 || !io_read_track_at(pict_path, (long)n * SCENE_SLOT, slot, SCENE_SLOT))
         return 0;
 
     /* The key is applied once per 128,000-byte half, restarting each time -

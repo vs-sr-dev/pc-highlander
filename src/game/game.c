@@ -26,7 +26,7 @@ int game_open(Game *g, const char *track3, const char *track2)
 
     if (!sheets_load(&g->sheets, track2))
         return 0;
-    g->boot = io_read(track2);
+    g->boot = io_read_track(track2);
     if (!g->boot.data) {
         sheets_free(&g->sheets);
         return 0;

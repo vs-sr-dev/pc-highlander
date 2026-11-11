@@ -64,15 +64,29 @@ sync pad starts, counted from the track's block 0, which is where
 later: 96 bytes of header, then 64 it takes for a sync pad. Read from
 `jcdinfo.py`'s file, the kit's rule puts films 10 and 35 one block early:
 38,405 and 100,862, where the scripts say 38,406 and 100,863. Read from the
-kit's own file, all 36 agree. So `hlview` reads the films from `--kit DIR`
-(default `assets/kit_tracks`, from
-`python -m jaguarkit.disc IMAGE --extract assets/kit_tracks`).
+kit's own file, all 36 agree. 
 
-**The other tracks have not moved yet.** With every track taken from the
-kit, six checks break. `--check-film` and `--check-char` hold, but `mesh`,
-`doors`, `script`, `follow`, `combat` and `inventory` read tracks 2, 3 and 5
-at offsets measured in `jcdinfo.py`'s files, and each of those readers has
-to be moved to the kit's origin. They move one
-track at a time, each when the checks that read it say it held. After that,
-`tools/jcd` goes, and the tools that read tracks (`tools/m68k`, `tools/gpu`,
-`tools/cinepak`, `tools/emu`) give way to the kit's modules.
+**Then every track moved.** Taking the other tracks from the kit as they
+were broke six checks, since `mesh`, `doors`, `script`, `follow`, `combat` and
+`inventory` read tracks 2, 3 and 5 at offsets measured in `jcdinfo.py`'s
+files. But the difference is the same on every data track: the kit's file is
+`jcdinfo.py`'s with **160 bytes in front**. Those bytes are 64 of `ATRI`
+lead-in, the 32-byte `ATARI APPROVED DATA HEADER ATRI!`, and a 64-byte sync
+pad. On track 2, which has no pad, they are the boot image's first 64 bytes,
+which is where 56 bytes into the boot image came from. Past them the two
+files are equal, byte for byte, to the end of the kit's.
+
+So the engine does not move its offsets; it moves its origin.
+`io_read_track` and `io_read_track_at` (`src/util/io.h`) read a kit track
+from `TRACK_ORIGIN` = 160, and every offset the engine and
+`assets/manifest.json` carry stays what it was. The films are the
+exception: the kit's runtime reads track 7 whole, by block. `hlview` reads
+every track from `--tracks DIR`, default `assets/kit_tracks`, from
+`python -m jaguarkit.disc IMAGE --extract assets/kit_tracks`. All eight checks
+print what they printed on `jcdinfo.py`'s files. So do three backdrops on
+track 4 (the first, the last and `CA_CAM03`), which no check reads.
+
+What is left is the Python side: `tools/jcd` goes, and the tools that read
+tracks (`tools/m68k`, `tools/gpu`, `tools/cinepak`, `tools/emu`, and the
+extractors behind the manifest) give way to the kit's modules or learn the
+same origin.

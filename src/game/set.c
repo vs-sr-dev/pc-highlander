@@ -12,7 +12,7 @@ static void *slot_read(const char *track3, int index)
     uint8_t *slot = malloc(SET_SLOT);
     if (!slot)
         return NULL;
-    if (!io_read_at(track3, (long)index * SET_SLOT, slot, SET_SLOT)) {
+    if (!io_read_track_at(track3, (long)index * SET_SLOT, slot, SET_SLOT)) {
         free(slot);
         return NULL;
     }

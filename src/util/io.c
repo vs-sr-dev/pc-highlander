@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 Blob io_read(const char *path)
 {
@@ -26,6 +27,25 @@ void io_free(Blob *b)
     free(b->data);
     b->data = NULL;
     b->size = 0;
+}
+
+Blob io_read_track(const char *path)
+{
+    Blob b = io_read(path);
+    if (b.data && b.size <= TRACK_ORIGIN) {
+        io_free(&b);
+        return b;
+    }
+    if (b.data) {
+        b.size -= TRACK_ORIGIN;
+        memmove(b.data, b.data + TRACK_ORIGIN, b.size + 1);
+    }
+    return b;
+}
+
+int io_read_track_at(const char *path, long off, void *buf, size_t count)
+{
+    return io_read_at(path, off + TRACK_ORIGIN, buf, count);
 }
 
 int io_read_at(const char *path, long off, void *buf, size_t count)
