@@ -83,7 +83,23 @@ in fact as well as in name.
 Session 15's list stands, less item 3, which this session finished:
 
 1. **The way in**: power-on to the first playable frame and back
-   (session 15, item 1).
+   (session 15, item 1). What the 68000 does, read at the end of this session:
+   * `$5090`, once: the settings off the Memory Track (`$5198`), then the boot
+     film's block, 94,340 = film 34, into `$44BC` (`$5212`), and `$83C0`
+     plays it (`$521A`). `$83C0` is the film player: the main loop calls it
+     whenever `$44BC` is non-zero (`$5494`), which is how a script's film
+     plays too.
+   * `$5282` then sets the current scene and set to `$500`, which is
+     **DUN1_CAM00**, the arrival for START GAME. It queues block 54,340,
+     which is **MENU_CAM00**'s backdrop. DUN1's set lists MENU_CAM00 among
+     its scenes. The set the scripts run is the loaded scene's group, `$45DC`
+     masked to `$FFC0` (`$52E6`), so the menu set's script runs over the menu
+     backdrop.
+   * So the order is boot film, then the menu. The language screen is the
+     menu's second item, not a step before it, which corrects session 15's
+     list. Still to read: what `reset` does in the binary. `PRI`, `SHANR1`
+     and `MAINSCRIPT` end in it, and the main loop restarts at `$543A`
+     (`$555E`, `$67CC`).
 2. **Sound** (session 15, item 2).
 3. **What the player sees.** For the saves, 18.2 now says what the original
    keeps: settings, game state, the scene, and the world table.

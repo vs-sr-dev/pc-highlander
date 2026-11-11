@@ -100,13 +100,24 @@ caller.
 enables none. (`$5012`'s `$FFFF` to `VI` puts the video interrupt's line off
 the screen. It is not a mask.) `$5198` then calls `$74BC`: Initialize,
 Open SETTINGS, Read 2, Read 20. Nothing enables an interrupt source before
-`$83C0` starts the game and calls `$8F1E`, which installs the handler at
-`$8F42`, writes 3 to `INT1` and clears the SR mask. So boot's NVM calls run
-with no interrupt able to arrive.
+the boot film, which `$521A` plays after that. So boot's NVM calls run with
+no interrupt able to arrive.
 
-**The handler** at `$8F42` reads `INT1`, counts video interrupts at `$4F20`,
-sets `$4F60` on a GPU interrupt, acknowledges both and returns. It touches
-neither the cartridge nor the NVM BIOS.
+**There are two handlers**, and neither touches the cartridge or the NVM
+BIOS. (The first version of this chapter, and the reply on issue #1, took
+`$83C0` for the game starting and `$8F42` for the game's handler. Both are
+the film player's.)
+
+* `$83C0` is the **film player**. `$8F1E` installs `$8F42` for the length of
+  a film, writes 3 to `INT1` (video and GPU) and clears the SR mask. `$8F42`
+  counts video interrupts at `$4F20`, sets `$4F60` on a GPU interrupt,
+  acknowledges both and returns.
+* When the film ends, `$8BA2` writes `$1F00` to `INT1` and `$5E30` installs
+  **the game's handler, `$5E72`**, with the video interrupt alone. It copies
+  three pairs of longs between the object lists at `$4E3C` and `$4E40`,
+  counts frames at `$4E18` and `$4E52`, and acknowledges. `$5E30` has no
+  other caller. The game's handler is in place from the end of the boot film
+  on, and it is the one running whenever the pause screen is open.
 
 **In game,** with interrupts on:
 
