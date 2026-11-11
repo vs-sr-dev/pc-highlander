@@ -28,9 +28,12 @@ SRC := src/main.c src/util/io.c src/util/json.c src/game/scene.c \
        src/game/model.c src/game/anim.c src/game/actor.c src/game/set.c \
        src/game/control.c src/game/ai.c src/game/sheet.c \
        src/game/act.c src/game/combat.c src/game/collect.c src/game/game.c src/script/vm.c \
-       src/media/film.c src/media/cinepak.c \
        src/r3d/r3d.c src/platform/window.c
-OBJ := $(SRC:src/%.c=build/%.o)
+# The films come from jaguarkit's runtime: the container and the decoder are
+# the Jaguar's, not Highlander's (docs/17-jaguarkit.md).
+KIT := jaguarkit/runtime/jk_film.c jaguarkit/runtime/jk_cvid.c
+CFLAGS += -Ijaguarkit/runtime
+OBJ := $(SRC:src/%.c=build/%.o) $(KIT:jaguarkit/runtime/%.c=build/jk/%.o)
 BIN := build/hlview
 
 all: $(BIN)
@@ -39,6 +42,10 @@ $(BIN): $(OBJ)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 build/%.o: src/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+build/jk/%.o: jaguarkit/runtime/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c -o $@ $<
 

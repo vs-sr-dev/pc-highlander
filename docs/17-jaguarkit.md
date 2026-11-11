@@ -51,6 +51,28 @@ Three things turned up in this port's own material on the way:
   module's header is at `0x36e90` (a module of 3,288 bytes loading at
   $F031D0).
 
-The port's tools and engine still use their own copies. Moving them onto the
-kit — `tools/jcd`, `tools/m68k`, `tools/gpu`, `tools/cinepak`, `tools/emu`
-and `src/media` — is the next step, and `--check-film` is what says it held.
+## The port onto the kit
+
+**The engine's films are the kit's** (session 16). `src/media/film.c` and
+`cinepak.c` are gone, and the engine builds `jaguarkit/runtime/jk_film.c`
+and `jk_cvid.c` instead. The calls change name and nothing else. All eight
+checks print what they printed before, byte for byte.
+
+That needed **track 7 as the kit extracts it**. A film's block is where its
+sync pad starts, counted from the track's block 0, which is where
+`jaguarkit.disc --extract` begins a file. `jcdinfo.py` begins it 160 bytes
+later: 96 bytes of header, then 64 it takes for a sync pad. Read from
+`jcdinfo.py`'s file, the kit's rule puts films 10 and 35 one block early:
+38,405 and 100,862, where the scripts say 38,406 and 100,863. Read from the
+kit's own file, all 36 agree. So `hlview` reads the films from `--kit DIR`
+(default `assets/kit_tracks`, from
+`python -m jaguarkit.disc IMAGE --extract assets/kit_tracks`).
+
+**The other tracks have not moved yet.** With every track taken from the
+kit, six checks break. `--check-film` and `--check-char` hold, but `mesh`,
+`doors`, `script`, `follow`, `combat` and `inventory` read tracks 2, 3 and 5
+at offsets measured in `jcdinfo.py`'s files, and each of those readers has
+to be moved to the kit's origin. They move one
+track at a time, each when the checks that read it say it held. After that,
+`tools/jcd` goes, and the tools that read tracks (`tools/m68k`, `tools/gpu`,
+`tools/cinepak`, `tools/emu`) give way to the kit's modules.

@@ -29,10 +29,6 @@ game/         scene.c  a backdrop slot: XOR key, colour, depth, camera footer
                        everything one game frame is, in the order it runs
 script/       vm.c     SCRIPT.GAS's interpreter: 83 opcodes, the process
                        table, and the world the commands reach into
-media/        film.c   the FILM container on track 7: seek to a block, find
-                       the sync, walk the chunks, hand out frames and speech
-              cinepak.c the cvid decoder - codebooks, 4x4 blocks, V1 and V4,
-                       inter and intra frames - into 24-bit and then RGB16
 r3d/          r3d.c    projection, matrices, scanline fill, Z-buffer
 platform/     window.c the only file that knows SDL exists
 util/         io.c     whole-file reads and big-endian accessors

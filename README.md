@@ -266,6 +266,7 @@ Z-buffer**, plus **Cinepak** full-motion video and **Red Book** CD audio.
 ## The engine
 
 ```
+python -m jaguarkit.disc <image.jcd> --extract assets/kit_tracks   # the films, for the engine
 make                                    # -> build/hlview, needs SDL3
 build/hlview --scene CA_CAM03           # a backdrop, by name
 build/hlview --scene CA_CAM03 --depth   # its Z-buffer

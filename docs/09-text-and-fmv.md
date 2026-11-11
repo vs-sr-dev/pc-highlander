@@ -189,11 +189,14 @@ blitter and GPU, and what it decodes is standard `cvid`. So the decoder here is
 written from the published format and then checked against the disc.
 
 ```
-src/media/film.c      the container: seek to a block, find the sync, walk the
-                      chunks, hand out video frames and speech
-src/media/cinepak.c   the cvid decoder, into 24-bit and then into RGB16
-tools/cinepak/filmdec.py   the same codec again, in Python, as a second opinion
+jaguarkit/runtime/jk_film.c   the container: seek to a block, find the film,
+                              walk the chunks, hand out frames and speech
+jaguarkit/runtime/jk_cvid.c   the cvid decoder, into 24-bit and then RGB16
+jaguarkit/cvid.py             the same codec again, in Python, as a second opinion
 ```
+
+They were `src/media/film.c` and `cinepak.c` until session 16, when the
+engine moved onto the kit they had become ([17-jaguarkit.md](17-jaguarkit.md)).
 
 A frame is ten bytes and then strips — horizontal bands, two of 320x120 on this
 disc — and each strip carries its own pair of codebooks and the vectors that
@@ -236,7 +239,7 @@ is 19.3% against **84.2%**, and on frame 193, 11.6% against **91.8%**. Six
 frames were compared and rounding wins on every one of them; a mean error of
 −0.5 on all three channels is not a coincidence anybody needs to argue about.
 
-`src/media/cinepak.c` rounds now. What is left is second order and is stated
+The decoder rounds now (`jaguarkit/runtime/jk_cvid.c`'s `jk_cvid_rgb16`). What is left is second order and is stated
 rather than hidden: rounded, **79.7% of red values are exactly right and 98.3%
 are within one step**, but green and blue only 65–69% exactly and 89–92%
 within one. Red is the one channel Cinepak computes without a halving —

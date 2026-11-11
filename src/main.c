@@ -29,8 +29,8 @@
 #include "script/vm.h"
 #include "game/game.h"
 #include "game/combat.h"
-#include "media/film.h"
-#include "media/cinepak.h"
+#include "jk_film.h"
+#include "jk_cvid.h"
 #include "r3d/r3d.h"
 #include "platform/window.h"
 
@@ -59,13 +59,20 @@ typedef struct {
 static char path_pict[512], path_boot[512], path_t5[512], path_set[512];
 static char path_film[512];
 
+/* Tracks as jaguarkit extracts them (`python -m jaguarkit.disc IMAGE
+ * --extract DIR`): whole, from the track's block 0, so a block a script names
+ * is a block in the file.  The films read from here; the other tracks still
+ * come from jcdinfo.py's cut, 160 bytes further in, and move one at a time,
+ * each when the checks that read it say it held (docs/17-jaguarkit.md). */
+static const char *kit_dir = "assets/kit_tracks";
+
 static void paths(const char *dir)
 {
     snprintf(path_pict, sizeof path_pict, "%s/track04_pict.bin", dir);
     snprintf(path_boot, sizeof path_boot, "%s/track02_00004000.bin", dir);
     snprintf(path_t5,   sizeof path_t5,   "%s/track05_data.bin", dir);
     snprintf(path_set,  sizeof path_set,  "%s/track03_data.bin", dir);
-    snprintf(path_film, sizeof path_film, "%s/track07_1111.bin", dir);
+    snprintf(path_film, sizeof path_film, "%s/track07_1111.bin", kit_dir);
 }
 
 /* ---- the manifest ------------------------------------------------- */
@@ -1709,9 +1716,9 @@ static int check_script(void)
 
 static int film_inventory(uint32_t *blocks)
 {
-    int n = film_scan(path_film, blocks, FILM_MAX);
+    int n = jk_film_scan(path_film, blocks, FILM_MAX);
     if (n <= 0)
-        fprintf(stderr, "no films in %s: %s\n", path_film, film_error());
+        fprintf(stderr, "no films in %s: %s\n", path_film, jk_film_error());
     return n;
 }
 
@@ -1722,23 +1729,23 @@ static int film_inventory(uint32_t *blocks)
 static int play_film_block(const Args *a, uint32_t block, int windowed,
                            long stop)
 {
-    Film fm;
-    if (!film_open(&fm, path_film, block)) {
-        fprintf(stderr, "%s\n", film_error());
+    JkFilm fm;
+    if (!jk_film_open(&fm, path_film, block)) {
+        fprintf(stderr, "%s\n", jk_film_error());
         return 0;
     }
 
-    static Cinepak cv;
-    if (!cinepak_open(&cv, fm.width, fm.height)) {
+    static JkCvid cv;
+    if (!jk_cvid_open(&cv, fm.width, fm.height)) {
         fprintf(stderr, "the film at block %u is %dx%d, which is not a "
                 "Cinepak picture\n", block, fm.width, fm.height);
-        film_close(&fm);
+        jk_film_close(&fm);
         return 0;
     }
     uint16_t *fb = malloc((size_t)fm.width * fm.height * sizeof *fb);
     if (!fb) {
-        cinepak_close(&cv);
-        film_close(&fm);
+        jk_cvid_close(&cv);
+        jk_film_close(&fm);
         return 0;
     }
 
@@ -1758,20 +1765,20 @@ static int play_film_block(const Args *a, uint32_t block, int windowed,
     Input in = { 0 };           /* window_poll latches quit, so it is kept  */
 
     for (int c = 0; c < fm.nchunks && !quit; c++) {
-        if (!film_chunk(&fm, c)) {
-            fprintf(stderr, "%s\n", film_error());
+        if (!jk_film_chunk(&fm, c)) {
+            fprintf(stderr, "%s\n", jk_film_error());
             errors++;
             break;
         }
         for (int i = 0; i < fm.nsamples && !quit; i++) {
-            const FilmSample *s = &fm.sample[i];
-            if (film_audio(s)) {
+            const JkFilmSample *s = &fm.sample[i];
+            if (jk_film_audio(s)) {
                 audio += s->size;       /* phase 7's, and already verified   */
                 continue;
             }
-            int e = cinepak_frame(&cv, film_data(&fm, s), s->size);
-            if (e != CVID_OK) {
-                printf("  frame %ld: %s\n", frames, cinepak_why(e));
+            int e = jk_cvid_frame(&cv, jk_film_data(&fm, s), s->size);
+            if (e != JK_CVID_OK) {
+                printf("  frame %ld: %s\n", frames, jk_cvid_why(e));
                 errors++;
                 continue;
             }
@@ -1786,11 +1793,11 @@ static int play_film_block(const Args *a, uint32_t block, int windowed,
             }
             if (windowed) {
                 /* Wait for the frame's own moment, then show it. */
-                uint64_t due = t0 + (uint64_t)film_ticks(s) * 1000 / fm.rate;
+                uint64_t due = t0 + (uint64_t)jk_film_ticks(s) * 1000 / fm.rate;
                 uint64_t now = window_ms();
                 if (due > now && due - now < 2000)
                     window_sleep((uint32_t)(due - now));
-                cinepak_rgb16(&cv, fb);
+                jk_cvid_rgb16(&cv, fb);
                 window_present(fb);
                 window_poll(&in);
                 if (in.quit)
@@ -1811,8 +1818,8 @@ static int play_film_block(const Args *a, uint32_t block, int windowed,
     printf("\n");
 
     free(fb);
-    cinepak_close(&cv);
-    film_close(&fm);
+    jk_cvid_close(&cv);
+    jk_film_close(&fm);
     return errors == 0;
 }
 
@@ -1860,15 +1867,15 @@ static int check_film(void)
     if (nfilms <= 0)
         return 0;
 
-    static Cinepak cv;
+    static JkCvid cv;
     long frames = 0, keys = 0, errors = 0, unaccounted = 0, resume = 0;
     long long audio = 0;
     double running = 0.0;
 
     for (int n = 0; n < nfilms; n++) {
-        Film fm;
-        if (!film_open(&fm, path_film, blocks[n])) {
-            printf("film %2d: %s\n", n, film_error());
+        JkFilm fm;
+        if (!jk_film_open(&fm, path_film, blocks[n])) {
+            printf("film %2d: %s\n", n, jk_film_error());
             errors++;
             continue;
         }
@@ -1876,10 +1883,10 @@ static int check_film(void)
             printf("film %2d: codec %s\n", n, fm.codec);
             errors++;
         }
-        if (!cinepak_open(&cv, fm.width, fm.height)) {
+        if (!jk_cvid_open(&cv, fm.width, fm.height)) {
             printf("film %2d: %dx%d\n", n, fm.width, fm.height);
             errors++;
-            film_close(&fm);
+            jk_film_close(&fm);
             continue;
         }
 
@@ -1888,30 +1895,30 @@ static int check_film(void)
         int prev_audio = 0;
 
         for (int c = 0; c < fm.nchunks; c++) {
-            if (!film_chunk(&fm, c)) {
-                printf("  film %2d: %s\n", n, film_error());
+            if (!jk_film_chunk(&fm, c)) {
+                printf("  film %2d: %s\n", n, jk_film_error());
                 fbad++;
                 continue;
             }
-            if (film_unaccounted(&fm) != 0) {
+            if (jk_film_unaccounted(&fm) != 0) {
                 printf("  film %2d chunk %d: %u bytes no sample accounts for\n",
-                       n, c, film_unaccounted(&fm));
+                       n, c, jk_film_unaccounted(&fm));
                 fslack++;
             }
             for (int i = 0; i < fm.nsamples; i++) {
-                const FilmSample *s = &fm.sample[i];
-                if (film_audio(s)) {
+                const JkFilmSample *s = &fm.sample[i];
+                if (jk_film_audio(s)) {
                     audio += s->size;
                     fblocks++;
                     prev_audio = 1;
                     continue;
                 }
-                int e = cinepak_frame(&cv, film_data(&fm, s), s->size);
-                if (e != CVID_OK) {
+                int e = jk_cvid_frame(&cv, jk_film_data(&fm, s), s->size);
+                if (e != JK_CVID_OK) {
                     printf("  film %2d chunk %d frame %ld: %s\n", n, c,
-                           cv.frames, cinepak_why(e));
+                           cv.frames, jk_cvid_why(e));
                     fbad++;
-                } else if (film_resume(s) != (cv.keyframe || prev_audio)) {
+                } else if (jk_film_resume(s) != (cv.keyframe || prev_audio)) {
                     fresume++;
                 }
                 fdur += s->dur;
@@ -1932,8 +1939,8 @@ static int check_film(void)
         errors      += fbad;
         unaccounted += fslack;
         resume      += fresume;
-        cinepak_close(&cv);
-        film_close(&fm);
+        jk_cvid_close(&cv);
+        jk_film_close(&fm);
     }
 
     printf("films: %d of them, %ld frames decoded, %ld whole pictures\n",
@@ -2448,6 +2455,8 @@ static void usage(void)
 "hlview - the Highlander engine, phases 3 and 4\n"
 "\n"
 "  --tracks DIR      extracted tracks (default assets/tracks)\n"
+"  --kit DIR         tracks as jaguarkit extracts them: the films\n"
+"                    (default assets/kit_tracks)\n"
 "  --manifest FILE   default assets/manifest.json\n"
 "  --scene NAME      a scene by name (CA_CAM03) or #index\n"
 "  --depth           show the scene's Z half as grey instead of the picture\n"
@@ -2558,6 +2567,7 @@ int main(int argc, char **argv)
     for (int i = 1; i < argc; i++) {
         const char *v = i + 1 < argc ? argv[i + 1] : NULL;
         if      (!strcmp(argv[i], "--tracks")   && v) a.tracks = argv[++i];
+        else if (!strcmp(argv[i], "--kit")      && v) kit_dir = argv[++i];
         else if (!strcmp(argv[i], "--manifest") && v) a.manifest = argv[++i];
         else if (!strcmp(argv[i], "--scene")    && v) a.scene = argv[++i];
         else if (!strcmp(argv[i], "--model")    && v) a.model = argv[++i];
