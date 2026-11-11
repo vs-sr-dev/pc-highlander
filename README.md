@@ -260,6 +260,7 @@ Z-buffer**, plus **Cinepak** full-motion video and **Red Book** CD audio.
 | [docs/15-combat.md](docs/15-combat.md) | Combat: PPCOLL, the hit frames, and the weapon banks |
 | [docs/16-inventory.md](docs/16-inventory.md) | The pickup, the inventory screen, and who is in a set |
 | [docs/17-jaguarkit.md](docs/17-jaguarkit.md) | jaguarkit: the Jaguar part of this port, checked on four more discs |
+| [docs/18-memory-track.md](docs/18-memory-track.md) | The Memory Track: the save code in the retail binary, mapped by hyjinx187 ([#1](https://github.com/vs-sr-dev/pc-highlander/issues/1)) |
 | [docs/sessions/](docs/sessions/) | Work log, one note per session |
 
 ## The engine
@@ -293,6 +294,13 @@ disassemblers, the register map, the Cinepak films in Python and C, and
 BigPEmu as an oracle — checked on Baldies, Battle Morph, Iron Soldier 2 and
 Myst as well as this disc. It lives here until a second Jaguar port splits it
 out ([docs/17-jaguarkit.md](docs/17-jaguarkit.md)).
+
+Unlike its sibling kits, jaguarkit has no recompiler yet, and this port
+stays a reimplementation. About 70% of the 1995 source is GPU code, loaded
+in pieces into the GPU's 4 KB of local RAM: the 3D engine, the script
+machine, the AI, combat, collision. A recompiled 68000 would get the menus,
+the CD queue and the saves, not the game. A static recompiler will come to
+the kit with a Jaguar game that needs one.
 
 ```
 python -m jaguarkit.disc <image.cue>                        tracks, headers, boot

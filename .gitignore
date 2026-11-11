@@ -34,6 +34,9 @@ cmake-build-*/
 *.ilk
 *.ppm
 
+# Notes for the next session and draft replies, never committed
+ISSUE-*.md
+
 # Editor / OS
 .vs/
 .vscode/

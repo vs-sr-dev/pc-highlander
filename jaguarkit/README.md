@@ -21,7 +21,8 @@ It is not a recompiler. The one port it serves so far is a reimplementation
 the Jaguar's code is too entangled with its GPU and blitter for a 68000
 recompiler to go far on its own. What a port of either kind needs first is
 here: the disc, the code mapped, the films, and a way to check against the
-real machine.
+real machine. Unlike its sibling kits it has no recompiler yet. That layer
+will be written for a Jaguar game that needs it, as theirs were.
 
 ## Ports built on it
 
@@ -108,7 +109,7 @@ starts here. Checked on five discs:
 | 1. Recognise | What is on this disc or cartridge? | `disc` (sessions, tracks, the Atari header and tailer, sync tags, the boot image), `cart` (config, entry) | a `fingerprint`: Atari's CD and Cinepak libraries, sound drivers, JagMod and the common toolchains, by signature |
 | 2. Extract | Turn standard formats into standard files | `disc --extract` (tracks from block 0, or header to tailer; audio as WAV), `film` (Cinepak films, their audio as WAV), `cvid`, `pixels` (RGB16) | CRY pixels, the object processor's bitmap objects, JagMod/Protracker music, the common sound formats |
 | 3. Map code | What does the code do, where? | `m68k` (recursive descent with the hardware and CD BIOS named; `--cart`, `--boot`), `risc` (GPU and DSP), `hw` (the register map and the CD BIOS jump table) | finding RISC modules in a binary, and the 68000 code that copies them; Ghidra scripts |
-| 4. Translate | Turn Jaguar code into C | - | nothing planned: the first port reimplements |
+| 4. Translate | Turn Jaguar code into C | - | a static recompiler, with the first Jaguar game that needs one; the first port reimplements |
 | 5. Runtime | What an engine links | `runtime/` (C99): `jk_film` (the container, films found by structure, audio resolved), `jk_cvid` (Cinepak to RGB24 and to the Jaguar's rounded RGB16); `bigpemu/` (the config, `jk_ramdump.c`, `findfb`, `strip`, `fakeram`) | a PCM mixer for the film audio; Red Book audio from the image |
 
 ## Principles

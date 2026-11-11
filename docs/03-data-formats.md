@@ -538,3 +538,8 @@ SOUNDOFF 5   RESTOREITEM 6   SETBIT 8   RESETBIT 9   CHARCHANGE 14
 each character and object. There is also a fallback path **without NVRAM**,
 based on codes entered on the keypad (`NONNVRAM.TXT`). For the port we can
 ignore the original format and simply serialise WST plus gamestate.
+
+That is the June 1995 `NVRAM.S`. The retail binary's save code differs: it has
+a slot menu, a different chunk marker and a check value. It is mapped in
+[18-memory-track.md](18-memory-track.md), from hyjinx187's contribution in
+[issue #1](https://github.com/vs-sr-dev/pc-highlander/issues/1).
