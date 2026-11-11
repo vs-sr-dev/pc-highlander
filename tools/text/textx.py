@@ -22,6 +22,9 @@ import json
 import re
 import struct
 import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import track                                                 # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -35,7 +38,7 @@ LANGS = ("en", "fr", "de")
 
 
 def load(path):
-    boot = open(path, "rb").read()
+    boot = track.read(path)
     i = boot.find(CODE_TAG)
     if i < 0:
         raise SystemExit("no CODE section - is this the boot track?")

@@ -17,7 +17,7 @@ nothing in the dump says which frame it is looking at:
      pixel.
 
   python tools/emu/cmpfb.py BigPEmuDEV/Scripts/hlcine/ram12.bin \\
-      --track assets/tracks/track07_1111.bin --film 34
+      --track assets/kit_tracks/track07_1111.bin --film 34
 """
 
 import argparse
@@ -26,8 +26,9 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "cinepak"))
-import filmdec                                          # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", ".."))
+from jaguarkit import cvid, film                        # noqa: E402
 
 W, H = 320, 240
 STRIDE = 1280
@@ -89,7 +90,7 @@ def hist(px):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("dump")
-    ap.add_argument("--track", default="assets/tracks/track07_1111.bin")
+    ap.add_argument("--track", default="assets/kit_tracks/track07_1111.bin")
     ap.add_argument("--film", type=int, default=34)
     ap.add_argument("--base", type=lambda s: int(s, 0), default=0x0C0000)
     ap.add_argument("--roll", type=int, default=None,
@@ -113,14 +114,13 @@ def main():
           % (args.base, STRIDE, roll))
 
     d = open(args.track, "rb").read()
-    offs = filmdec.films(d)
-    info = filmdec.describe(d, offs[args.film])
-    vid = filmdec.video(d, offs[args.film])
-    print("film %d: %dx%d, %d frames" % (args.film, info["width"],
-                                         info["height"], len(vid)))
+    fm = film.scan(d)[args.film]
+    vid = fm.video()
+    print("film %d: %dx%d, %d frames" % (args.film, fm.width, fm.height,
+                                         len(vid)))
 
     jh = hist(jag[40:220])
-    dec = filmdec.Decoder(info["width"], info["height"])
+    dec = cvid.Decoder(fm.width, fm.height)
     n = len(vid) if not args.max_frames else min(args.max_frames, len(vid))
     best = (1e9, -1)
     for i in range(n):
@@ -145,7 +145,7 @@ def main():
     # means anything without the other.
     lo = max(0, best[1] - args.refine)
     hi = min(len(vid) - 1, best[1] + args.refine)
-    dec = filmdec.Decoder(info["width"], info["height"])
+    dec = cvid.Decoder(fm.width, fm.height)
     fine = (1e18, -1, -1)
     for i in range(hi + 1):
         p, sz, ts, dur = vid[i]
@@ -163,7 +163,7 @@ def main():
     print("on the pixels: frame %d at row %d ($%06X), mean |RGB16 word| %.1f"
           % (frame, row, args.base + row * STRIDE, err))
 
-    dec = filmdec.Decoder(info["width"], info["height"])
+    dec = cvid.Decoder(fm.width, fm.height)
     for i in range(frame + 1):
         p, sz, ts, dur = vid[i]
         dec.frame(d, p, sz)

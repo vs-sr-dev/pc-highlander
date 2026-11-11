@@ -34,6 +34,8 @@ import json
 import os
 import struct
 import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import track                                                 # noqa: E402
 
 SLOT = 56 * 2352
 SETS = 48
@@ -459,16 +461,10 @@ class Script(object):
 
 
 def load_films(path):
-    """cd block -> film number, from filmls's TSV."""
-    f = {}
+    """cd block -> film number, from the manifest's films."""
     if not path or not os.path.exists(path):
-        return f
-    for i, line in enumerate(open(path)):
-        p = line.split("\t")
-        if i == 0 or len(p) < 2:
-            continue
-        f[int(p[1])] = int(p[0])
-    return f
+        return {}
+    return {f["block"]: f["film"] for f in json.load(open(path)).get("films", [])}
 
 
 def load_scene_names(path):
@@ -495,12 +491,12 @@ def main():
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--main", action="store_true",
                     help="disassemble MAINSCRIPT out of the resident binary")
-    ap.add_argument("--films", default="assets/films.tsv")
+    ap.add_argument("--films", default="assets/manifest.json")
     ap.add_argument("--sets", default="assets/sets.json")
     ap.add_argument("--out")
     a = ap.parse_args()
 
-    d = open(a.file, "rb").read()
+    d = track.read(a.file)
     films = load_films(a.films)
     scenes = load_scene_names(a.sets)
     names = {}

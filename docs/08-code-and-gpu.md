@@ -1,8 +1,8 @@
 # 08 — The retail binary: boot chain, memory map, GPU modules
 
-Everything here is read out of track 2 of the retail disc with
-[tools/m68k/dis68k.py](../tools/m68k/dis68k.py) and
-[tools/gpu/disgpu.py](../tools/gpu/disgpu.py). It is the first look inside the
+Everything here is read out of track 2 of the retail disc with this port's
+68000 and RISC disassemblers, which are now `jaguarkit.m68k` and
+`jaguarkit.risc` ([jaguarkit](../jaguarkit/README.md)). It is the first look inside the
 shipped code rather than the July source, and it is what unlocked the scene
 format.
 
@@ -47,7 +47,7 @@ the load address was confirmed independently of the tag.
 The CD BIOS entry points are the standard Jaguar CD jump table in DRAM at
 `$3000` (`CD_read` = `$303C`, `CD_ptr` = `$304E`, and so on), which is precisely
 why a CD boot binary is linked at `$4000`: it is the first free long above the
-table. [tools/m68k/jagsyms.py](../tools/m68k/jagsyms.py) carries the whole list.
+table. `jaguarkit.hw` carries the whole list.
 
 ### Memory map as the retail build uses it
 
@@ -175,17 +175,24 @@ module holding both is `$2F310`. See [11-script-vm.md](11-script-vm.md).
 ## 8.4 The tools
 
 ```
-python tools/m68k/dis68k.py FILE --base 0x5000 --off 0x12600 --len 0x30000 \
-                                --entry 0x5000 --out code.asm
-python tools/gpu/disgpu.py FILE --off 0x36e98 --header --out module.gas
+python -m jaguarkit.m68k assets/kit_tracks/track02_boot.bin --base 0x5000 \
+       --off 0x126a0 --len 0x30000 --entry 0x5000 --out code.asm
+python -m jaguarkit.risc assets/kit_tracks/track02_boot.bin --off 0x36f30 --header
 ```
 
-`dis68k` is a recursive-descent 68000 disassembler on capstone: it follows
+The offsets in this chapter count from where the data begins, 160 bytes into
+the kit's file (06 §6.6), and the kit's tools read the file whole, so they
+take each one +160. The resident binary at `$12600` is `--off 0x126a0`, and
+the runtime address of a byte at kit offset *o* is *o* − `$D6A0`. The GPU
+module's header is at `$36E90`, not at `$36E98` as this chapter first said:
+`--off 0x36f30`, a module of 3,288 bytes loading at `$F031D0`.
+
+`m68k` is a recursive-descent 68000 disassembler on capstone: it follows
 branches and calls, labels every referenced address, prints the gaps as data,
 and substitutes names for the Jaguar hardware registers and the CD BIOS entries.
 `--linear` adds a plain sweep of whatever the recursion did not reach.
 
-`disgpu` covers the Jaguar RISC used by both the GPU and the DSP. The encoding
+`risc` covers the Jaguar RISC used by both the GPU and the DSP. The encoding
 is fixed 16-bit — `opcode[15:10] | reg1[9:5] | reg2[4:0]` — with only `MOVEI`
 carrying a 32-bit immediate behind it, low half first, so a linear sweep from a
 word-aligned start is exact. `--header` reads the destination and size longs of

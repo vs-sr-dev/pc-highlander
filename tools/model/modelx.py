@@ -42,6 +42,8 @@ import json
 import os
 import struct
 import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import track                                                 # noqa: E402
 
 HEADER = 24
 
@@ -171,7 +173,7 @@ def main():
     ap.add_argument("--min-verts", type=int, default=1)
     args = ap.parse_args()
 
-    d = open(args.file, "rb").read()
+    d = track.read(args.file)
     models = scan(d, args.min_verts)
     if args.index is not None:
         models = [models[args.index]]

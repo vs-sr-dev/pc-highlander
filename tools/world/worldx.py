@@ -68,6 +68,8 @@ import os
 import re
 import struct
 import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import track                                                 # noqa: E402
 
 BASE, OFF = 0x5000, 0x12600         # load address, and where it starts in track 2
 WS_SRC, WS_DST = 0x15458, 0x32660
@@ -196,7 +198,7 @@ def main():
     ap.add_argument("--json", metavar="FILE")
     a = ap.parse_args()
 
-    d = open(a.track2, "rb").read()
+    d = track.read(a.track2)
     ws = world(d)
     cs = sheets(d)
     by_addr = {s["addr"]: s["index"] for s in cs}

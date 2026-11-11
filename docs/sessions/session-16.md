@@ -1,7 +1,8 @@
-# Session 16 — The save code, and the engine's films onto the kit
+# Session 16 — The save code, and the port onto the kit
 
 Two things this session. The repository's first issue got its answer, and with
-it a chapter. Then the engine moved its first piece onto jaguarkit.
+it a chapter. Then the port moved onto jaguarkit, engine and tools, with every
+check printing what it printed before.
 
 → [18-memory-track.md](../18-memory-track.md), [17-jaguarkit.md](../17-jaguarkit.md)
 
@@ -61,19 +62,30 @@ kit's extraction (default `assets/kit_tracks`). All eight checks print the
 same bytes, and so do the first, the last and one more of the 672 backdrops,
 which no check reads.
 
+## 4. And the tools
+
+The extractors read kit tracks through `tools/track.py`, from the same
+origin. Old tools on `jcdinfo.py`'s files and new ones on the kit's write the
+same 150 files and the same output. The manifest is the same but for its
+`disc` section, with its films now from `jaguarkit.film`. The committed
+manifest was older than the tools on one point: film 17's speech is 411,600
+bytes, not August's 433,820. `tools/jcd`, `m68k`, `gpu`, `cinepak` and most
+of `emu` are gone, replaced by the kit. `cmpfb.py` stays, decoding with the
+kit and printing what it printed on session 14's dump. The engine's decoder
+and the kit's Python one still agree byte for byte on film 19 frame 30 and
+film 6 frame 400.
+
+So the port is on the kit, engine and tools, and jaguarkit is one game's kit
+in fact as well as in name.
+
 ## TODO for session 17
 
-Session 15's list stands, with item 3 under way:
+Session 15's list stands, less item 3, which this session finished:
 
 1. **The way in**: power-on to the first playable frame and back
    (session 15, item 1).
 2. **Sound** (session 15, item 2).
-3. **The Python side onto the kit.** The engine is done. `tools/jcd` goes,
-   and `tools/m68k`, `tools/gpu`, `tools/cinepak`, `tools/emu` and the
-   extractors behind the manifest give way to the kit's modules or read from
-   `TRACK_ORIGIN`. `tools/manifest.py` rebuilt from kit tracks must produce
-   the same `manifest.json`. Fix the GPU module offset in the README and 08
-   (`0x36e90`) on the way.
-4. **What the player sees.** For the saves, 18.2 now says what the original
+3. **What the player sees.** For the saves, 18.2 now says what the original
    keeps: settings, game state, the scene, and the world table.
-5. **The probe on the game**, then 6. **the playthrough**, as before.
+4. **The probe on the game**, then 5. **the playthrough**, as before. The
+   probe's dumps now come from `jaguarkit/bigpemu/jk_ramdump.c`.

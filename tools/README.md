@@ -1,34 +1,36 @@
-Extractors and utilities. Every tool is standalone Python 3; `scenex.py` needs
-numpy and Pillow, the disassemblers need capstone.
+The extractors for Highlander's own formats. Every tool is standalone Python 3;
+`scenex.py` needs numpy and Pillow.
+
+What is Jaguar rather than Highlander — the disc, the 68000 and RISC
+disassemblers, the register map, the Cinepak films, BigPEmu — is
+[jaguarkit](../jaguarkit/README.md), and these tools read the tracks it
+extracts:
 
 ```
-manifest.py          one JSON tying all of the above together
-jcd/jcdinfo.py       read a .jcd disc image: list, hex-dump, extract tracks
+python -m jaguarkit.disc <image.jcd> --extract assets/kit_tracks
+```
+
+```
+manifest.py          one JSON tying all of the below together
+track.py             a kit track from ORIGIN, where every offset in docs/ begins
 scene/scenex.py      backdrops and Z-buffers off the PICT track, as PNG
+scene/backproj.py    a backdrop's Z-buffer, back into world coordinates
 set/setx.py          the set track: scenes, doorways, collision, events
 world/worldx.py      the world-state table and the character sheets
 script/scriptx.py    the script VM: disassemble the set scripts and MAINSCRIPT
 model/modelx.py      polygon models: list, OBJ export, quick PNG preview
 anim/animx.py        character animations: list, JSON export
 text/textx.py        the localised item text, English / French / German
-cinepak/filmls.py    inventory of the films on the FMV track
-cinepak/filmwav.py   the films' interleaved audio, as .wav
-cinepak/filmdec.py   the films' video: a cvid decoder, and a frame as .ppm
 wave/wavex.py        the WAVE sound-effect bundles on tracks 5 and 6, as .wav
-m68k/dis68k.py       recursive-descent 68000 disassembler (capstone)
-m68k/jagsyms.py      Jaguar hardware registers and the Jaguar CD BIOS jump table
-gpu/disgpu.py        Jaguar RISC (GPU / DSP) disassembler
-emu/hl_cine.c        a BigPEmu script module: dumps Jaguar RAM while a film runs
-emu/findfb.py        finds the framebuffer inside such a dump, untold
-emu/cmpfb.py         which frame it is, and how it differs from our decoder's
-emu/strip.py         a tall strip of memory as an image, to see where a picture starts
-emu/fakeram.py       plants a known picture in noise, to check findfb.py
-emu/setup_cfg.py     points BigPEmu at the disc and switches the probe on
+emu/cmpfb.py         a film frame the Jaguar decoded against ours
 ```
 
-`emu/` is the frame comparator, and it is C plus Python rather than Python
-alone: the Jaguar end is compiled by the emulator itself. See
-[emu/README.md](emu/README.md).
+**Offsets.** A kit track is written whole, from its block 0. Every offset in
+`docs/` and in the manifest counts from 160 bytes in, past the lead-in, the
+Atari header and the sync pad, and `track.py` reads from there. The kit's own
+tools read the file whole, so a docs offset is +160 there. For example, the
+resident binary is `--off 0x126a0` to `jaguarkit.m68k`, where 08 gives
+`$12600`.
 
 Run any of them with `--help`. The formats they implement are documented in
 `docs/`; each tool's module docstring records the specific findings it relies on.

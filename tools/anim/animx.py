@@ -51,6 +51,9 @@ import argparse
 import json
 import struct
 import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import track                                                 # noqa: E402
 
 HEADER = 14
 
@@ -113,7 +116,7 @@ def main():
                     help="print the root motion of each frame")
     args = ap.parse_args()
 
-    d = open(args.file, "rb").read()
+    d = track.read(args.file)
     anims = scan(d)
     chosen = [anims[args.index]] if args.index is not None else anims
 

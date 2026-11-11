@@ -62,6 +62,9 @@ import argparse
 import json
 import struct
 import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import track                                                 # noqa: E402
 
 SLOT = 56 * 2352
 SETS = 48
@@ -186,7 +189,7 @@ def main():
     ap.add_argument("--json", metavar="FILE")
     args = ap.parse_args()
 
-    d = open(args.track3, "rb").read()
+    d = track.read(args.track3)
     sets = [parse_set(d, n) for n in range(min(SETS, len(d) // SLOT))]
     chosen = [sets[args.set]] if args.set is not None else sets
 

@@ -86,7 +86,24 @@ every track from `--tracks DIR`, default `assets/kit_tracks`, from
 print what they printed on `jcdinfo.py`'s files. So do three backdrops on
 track 4 (the first, the last and `CA_CAM03`), which no check reads.
 
-What is left is the Python side: `tools/jcd` goes, and the tools that read
-tracks (`tools/m68k`, `tools/gpu`, `tools/cinepak`, `tools/emu`, and the
-extractors behind the manifest) give way to the kit's modules or learn the
-same origin.
+**And then the Python side.** The extractors for Highlander's own formats stay
+in `tools/`, and read a kit track through `tools/track.py`, from the same
+`ORIGIN`. It refuses a file without the kit's lead-in and header, rather
+than read it 160 bytes off. Each one, run old on `jcdinfo.py`'s files and new
+on the kit's, writes the same thing. That covers the sets, the world, both
+animation tracks, both model sources, the text, both wave tracks, the 27
+scripts and MAINSCRIPT, twenty backdrops from either end of track 4, and the
+back-projection: 150 files and every line of output. `manifest.py` builds the
+same manifest, except for its `disc` section, which records the kit's file
+names and sizes. Its films now come from `jaguarkit.film` on the whole of
+track 7, and all 36 agree. `scriptx.py` takes its film numbers from the
+manifest, since `films.tsv` came from a tool that is gone.
+
+What the kit replaced is gone: `tools/jcd` (`jaguarkit.disc`), `tools/m68k`
+(`jaguarkit.m68k`, `jaguarkit.hw`), `tools/gpu` (`jaguarkit.risc`),
+`tools/cinepak` (`jaguarkit.film`, `jaguarkit.cvid`), and the BigPEmu half of
+`tools/emu` (`jaguarkit/bigpemu`). `tools/emu/cmpfb.py` stays, because which
+frame of which film is on screen is Highlander's question. It decodes with
+the kit now, and on session 14's `ram12.bin` it prints what it printed
+before, line for line. The GPU module offset is corrected where the commands
+are given: its header is at `$36E90`.

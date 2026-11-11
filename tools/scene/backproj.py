@@ -64,6 +64,9 @@ import struct
 import sys
 
 import numpy as np
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import track                                                 # noqa: E402
 
 SLOT = 258720
 HALF = 128000
@@ -88,7 +91,7 @@ def find_key(boot):
 
 
 def read_scene(fh, n, key):
-    fh.seek(n * SLOT)
+    fh.seek(track.ORIGIN + n * SLOT)
     slot = fh.read(SLOT)
     pad = np.resize(np.frombuffer(key, np.uint8), HALF)
     a = np.frombuffer(slot[:256000], np.uint8).copy()
@@ -281,8 +284,8 @@ def main():
     ap.add_argument("--cameras", type=int, default=16, help="cap for --check/--ground")
     args = ap.parse_args()
 
-    key = find_key(open(args.boot, "rb").read())
-    fh = open(args.track4, "rb")
+    key = find_key(track.read(args.boot))
+    fh = track.open_at(args.track4)
     manifest = json.load(open(args.manifest))
 
     if args.probe:

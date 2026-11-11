@@ -109,8 +109,8 @@ written to the film-offset variable `$44BC` at `$5212`). It is one of the two
 largest on the disc: 92 chunks, 15.2 MB.
 
 ```
-python tools/cinepak/filmls.py TRACK7 --tsv
-python tools/cinepak/filmls.py TRACK7 --chunks 34
+python -m jaguarkit.film assets/kit_tracks/track07_1111.bin
+python -m jaguarkit.film assets/kit_tracks/track07_1111.bin --chunks 34
 ```
 
 ## 9.3 The film audio
@@ -163,8 +163,13 @@ across the block joins is 2.55, against 2.50 inside the blocks — the joins are
 invisible. Shuffling the same blocks raises it to 6.93.
 
 ```
-python tools/cinepak/filmwav.py TRACK7 --out assets/filmaudio
+python -m jaguarkit.film assets/kit_tracks/track07_1111.bin --wav assets/filmaudio --pcm s8 --rate 22252
 ```
+
+Session 16 moved this from the port's `filmwav.py` to the kit. 34 of the 35
+films with speech came out byte for byte the same. Film 17 matches what
+`filmwav.py` wrote after its fourth-long fix, not the August files. Film 16
+now gets an empty WAV where it used to get none.
 
 35 of the 36 films carry sound; film 16, five chunks long, is silent.
 
@@ -304,6 +309,12 @@ Two independent readings agree, which is the point of writing the second one:
   401 frames deep into the chain of inter frames, on a film whose tick rate is
   30, so a decoder that drifted anywhere in those 400 frames would not land on
   the same picture.
+
+Since session 16 both decoders are jaguarkit's: `jk_cvid.c` in the engine,
+and `jaguarkit.cvid` behind `python -m jaguarkit.film`. The same two frames
+come out byte for byte the same, `hlview --film 19 --shot-at 30` against
+`python -m jaguarkit.film assets/kit_tracks/track07_1111.bin --film 19
+--frame 30 --ppm f.ppm`, and likewise film 6 frame 400.
 
 ### Playing one
 

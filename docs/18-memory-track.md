@@ -10,9 +10,10 @@ held. Reading the code around them adds the menu's dispatch (18.3), and that
 changes what the freeze can be (18.5).
 
 All addresses are runtime addresses. The main binary loads at `$5000`.
-In `track02_00004000.bin` as `jcdinfo.py` extracts it, runtime =
-file offset − `$D600`. The issue counts from the start of the track, which
-gives − `$D6A2`. Both are the same bytes.
+Counted from where track 2's data begins (06 §6.6), as these documents count,
+runtime = offset − `$D600`. In the kit's file, which starts 160 bytes earlier
+at the track's block 0, it is − `$D6A0`. The issue's − `$D6A2` counts from two
+bytes earlier still. All three name the same bytes.
 
 ## 18.1 The BIOS
 

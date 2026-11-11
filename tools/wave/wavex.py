@@ -39,6 +39,9 @@ import argparse
 import os
 import struct
 import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import track                                                 # noqa: E402
 
 SLOT = 56 * 2352
 TAG = b"WAVE"
@@ -87,7 +90,7 @@ def main():
     ap.add_argument("--list", action="store_true")
     a = ap.parse_args()
 
-    d = open(a.track, "rb").read()
+    d = track.read(a.track)
     stem = os.path.splitext(os.path.basename(a.track))[0]
     if a.out:
         os.makedirs(a.out, exist_ok=True)

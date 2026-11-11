@@ -51,7 +51,7 @@ Inventory, architecture, formats and CD addressing documented.
 
 ### Phase 1 — Open the disc — DONE
 `.jcd` container decoded, data de-swapped, retail layout mapped.
-Tool: [tools/jcd/jcdinfo.py](../tools/jcd/jcdinfo.py). Details in
+Tool: `tools/jcd/jcdinfo.py`, since session 16 `jaguarkit.disc`. Details in
 [06-jcd-format.md](06-jcd-format.md).
 **Outcome:** the zero point is confirmed to the byte (`BO_CINEPAK_BUZZ = 0`
 lands on the first film's `FILM` header), but the July 1995 offset tables do
@@ -255,7 +255,7 @@ a script names, find the `'1111'` sync, walk the chunks — and
 5.2 asks. `hlview --check-film` decodes **every frame of all 36 films**: 13,922
 frames, zero decoder errors, zero chunks their sample table does not account
 for, every film at 12.0 fps. One frame decoded in C and in Python is byte for
-byte the same file, and the frame counts agree with `filmdec.py`
+byte the same file, and the frame counts agree with `filmdec.py` (since session 16, `jaguarkit.film`)
 ([09-text-and-fmv.md](09-text-and-fmv.md) §9.5).
 
 The integration is the handshake and nothing more: a script posts

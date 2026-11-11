@@ -30,6 +30,8 @@ import struct
 import sys
 
 import numpy as np
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import track                                                 # noqa: E402
 
 SLOT = 258720
 PAYLOAD = 256000
@@ -96,7 +98,7 @@ def main():
 
     from PIL import Image
 
-    key = find_key(open(args.boot, "rb").read())
+    key = find_key(track.read(args.boot))
     size = os.path.getsize(args.track4)
     count = size // SLOT
     os.makedirs(args.out, exist_ok=True)
@@ -109,9 +111,9 @@ def main():
         first, last = 0, count - 1
     last = min(last, count - 1)
 
-    fh = open(args.track4, "rb")
+    fh = track.open_at(args.track4)
     for n in range(first, last + 1):
-        fh.seek(n * SLOT)
+        fh.seek(track.ORIGIN + n * SLOT)
         slot = fh.read(SLOT)
         data = decode(slot[:PAYLOAD], key)
         words = data.view(">u2") if data.dtype == np.uint8 else data

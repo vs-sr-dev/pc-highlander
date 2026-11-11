@@ -2,8 +2,8 @@
  *
  * It shows one of the 672 pre-rendered backdrops, or its Z-buffer, and
  * composites a model extracted from the disc into it, depth-tested against
- * that Z-buffer.  Everything it reads is a track as jcdinfo extracts it, plus
- * assets/manifest.json for the names.
+ * that Z-buffer.  Everything it reads is a track as jaguarkit extracts it,
+ * from TRACK_ORIGIN (util/io.h), plus assets/manifest.json for the names.
  *
  *   hlview --scene CA_CAM03
  *   hlview --scene CA_CAM06 --object CA_WINE
@@ -156,7 +156,8 @@ static int index_object(const Index *ix, const char *name, int *pos, int *face)
 
 /* The films are decoded to 24-bit and only packed down to the framebuffer's
  * R5 B5 G6 to be shown, so what goes out here is what the decoder produced -
- * which is what makes it comparable, byte for byte, with filmdec.py. */
+ * which is what makes it comparable, byte for byte, with the kit's Python
+ * decoder (python -m jaguarkit.film ... --ppm). */
 static int write_ppm_rgb(const char *path, const uint8_t *rgb, int w, int h)
 {
     FILE *f = fopen(path, "wb");
@@ -1702,9 +1703,8 @@ static int check_script(void)
 
 /* Track 7 is 36 Cinepak films back to back, and a script names one by the CD
  * block it starts in.  What the viewer wants instead is "film 19", so the
- * track is walked once for the inventory - which is also the check that the
- * container reads the same way twice, since assets/films.tsv came out of
- * filmls.py months before any of this. */
+ * track is walked once for the inventory, with the kit's runtime, by the
+ * same rule its Python half and the manifest's film table use. */
 #define FILM_MAX 64
 
 static int film_inventory(uint32_t *blocks)
@@ -1851,8 +1851,8 @@ static int play_film(const Args *a, int which)
  * player may start at, which is a whole picture or the one after an audio
  * block, and that can only be checked with a decoder in hand.
  *
- * The frame counts are for reading against filmdec.py's --frames, which walks
- * the same container in Python. */
+ * The frame counts are for reading against python -m jaguarkit.film, which
+ * walks the same container in Python. */
 static int check_film(void)
 {
     uint32_t blocks[FILM_MAX];

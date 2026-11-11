@@ -1,7 +1,8 @@
 # 06 — The `.jcd` container and the retail disc layout
 
 Reverse-engineered from the USA disc image. Reference implementation:
-[tools/jcd/jcdinfo.py](../tools/jcd/jcdinfo.py).
+`jaguarkit.disc` ([jaguarkit](../jaguarkit/README.md)). Until session 16 it
+was this port's `tools/jcd/jcdinfo.py`, which the kit replaced.
 
 ---
 
@@ -211,11 +212,14 @@ literally the `sync_header equ '1111'` declared in the source.
 ## 6.6 Using the tool
 
 ```
-python tools/jcd/jcdinfo.py <image.jcd>
-python tools/jcd/jcdinfo.py <image.jcd> --extract assets/tracks
-python tools/jcd/jcdinfo.py <image.jcd> --hex 7 0 256
+python -m jaguarkit.disc <image.jcd>
+python -m jaguarkit.disc <image.jcd> --extract assets/kit_tracks
+python -m jaguarkit.disc <image.jcd> --hex 7 0 256
 ```
 
-`--extract` writes one file per track, already de-swapped and with the header
-stripped, so offset 0 of each file corresponds to block offset 0 of that data
-type.
+`--extract` writes one file per track, de-swapped and whole, from the track's
+block 0, so a block a game names is a block in the file. The data begins 160
+bytes in: 64 bytes of `ATRI` lead-in, the 32-byte `ATARI APPROVED DATA HEADER
+ATRI!`, and a 64-byte sync pad. That is where every offset in these documents
+counts from, and where `tools/track.py` and the engine's `TRACK_ORIGIN` start
+reading. `jcdinfo.py` used to cut its files there instead.

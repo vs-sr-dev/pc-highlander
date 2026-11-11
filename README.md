@@ -311,56 +311,62 @@ python -m jaguarkit.film <image.cue> --track 7 --check      every film frame
 
 ## Tools
 
-```
-python tools/jcd/jcdinfo.py <image.jcd>                     list tracks
-python tools/jcd/jcdinfo.py <image.jcd> --extract DIR       extract de-swapped tracks
-```
-
-`--extract` writes one file per track, de-swapped and with the header stripped.
-Everything below works on those files.
+The disc comes out through jaguarkit, whole, one file per track:
 
 ```
+python -m jaguarkit.disc <image.jcd> --extract assets/kit_tracks
+```
+
+The engine and the tools below read those files. Every offset in `docs/`
+counts from 160 bytes into a track, past the lead-in, the Atari header and the
+sync pad, which is where [tools/track.py](tools/track.py) and the engine's
+`TRACK_ORIGIN` start reading. The kit's own tools read a file whole, so an
+offset from `docs/` is +160 there.
+
+```
+K=assets/kit_tracks
+
 # all 672 backdrops and Z-buffers as PNG
-python tools/scene/scenex.py DIR/track04_pict.bin --boot DIR/track02_00004000.bin --out assets/scenes --depth
+python tools/scene/scenex.py $K/track04_PICT.bin --boot $K/track02_boot.bin --out assets/scenes --depth
 
 # a backdrop's Z-buffer, inverted back into world coordinates
-python tools/scene/backproj.py DIR/track04_pict.bin --boot DIR/track02_00004000.bin --check DUN1
-python tools/scene/backproj.py DIR/track04_pict.bin --boot DIR/track02_00004000.bin --ground D1
+python tools/scene/backproj.py $K/track04_PICT.bin --boot $K/track02_boot.bin --check DUN1
+python tools/scene/backproj.py $K/track04_PICT.bin --boot $K/track02_boot.bin --ground D1
 
 # the item text, English / French / German
-python tools/text/textx.py DIR/track02_00004000.bin --format tsv
+python tools/text/textx.py $K/track02_boot.bin --format tsv
 
 # the models: 19 in the binary (the items), 220 on track 5 (characters)
-python tools/model/modelx.py DIR/track02_00004000.bin --obj assets/models --png assets/models
+python tools/model/modelx.py $K/track02_boot.bin --obj assets/models --png assets/models
 
 # the animations: 285 on track 5, 42 on track 8
-python tools/anim/animx.py DIR/track05_data.bin --json assets/anims.json
+python tools/anim/animx.py $K/track05_DATA.bin --json assets/anims.json
 
 # the 48 sets: scene tables, doorways, collision meshes, events
-python tools/set/setx.py DIR/track03_data.bin --json assets/sets.json
+python tools/set/setx.py $K/track03_DATA.bin --json assets/sets.json
 
 # the world state: 197 objects and characters, and 40 character sheets
-python tools/world/worldx.py DIR/track02_00004000.bin --json assets/world.json
+python tools/world/worldx.py $K/track02_boot.bin --json assets/world.json
 
-# the 36 Cinepak films, and the audio interleaved in them
-python tools/cinepak/filmls.py DIR/track07_1111.bin --tsv
-python tools/cinepak/filmwav.py DIR/track07_1111.bin --out assets/filmaudio
-python tools/cinepak/filmdec.py DIR/track07_1111.bin --film 19 --frame 30 --ppm f.ppm
+# the 36 Cinepak films, and the speech interleaved in them
+python -m jaguarkit.film $K/track07_1111.bin
+python -m jaguarkit.film $K/track07_1111.bin --wav assets/filmaudio --pcm s8 --rate 22252
+python -m jaguarkit.film $K/track07_1111.bin --film 19 --frame 30 --ppm f.ppm
 
 # the 78 sound-effect bundles
-python tools/wave/wavex.py DIR/track06_data.bin --out assets/waves
-python tools/wave/wavex.py DIR/track05_data.bin --out assets/waves
-
-# the scripts: 27 sets plus the resident MAINSCRIPT
-python tools/script/scriptx.py DIR/track03_data.bin --all --out assets/scripts
-python tools/script/scriptx.py DIR/track02_00004000.bin --main
+python tools/wave/wavex.py $K/track06_DATA.bin --out assets/waves
+python tools/wave/wavex.py $K/track05_DATA.bin --out assets/waves
 
 # everything above, cross-referenced, in one JSON
-python tools/manifest.py DIR --out assets/manifest.json
+python tools/manifest.py $K --out assets/manifest.json
 
-# the game code, and one GPU module
-python tools/m68k/dis68k.py DIR/track02_00004000.bin --off 0x12600 --base 0x5000 --len 0x30000 --entry 0x5000 --out code.asm
-python tools/gpu/disgpu.py DIR/track02_00004000.bin --off 0x36e98 --header
+# the scripts: 27 sets plus the resident MAINSCRIPT (film numbers from the manifest)
+python tools/script/scriptx.py $K/track03_DATA.bin --all --out assets/scripts
+python tools/script/scriptx.py $K/track02_boot.bin --main
+
+# the game code, and one GPU module (docs offsets $12600 and $36E90, +160)
+python -m jaguarkit.m68k $K/track02_boot.bin --off 0x126a0 --base 0x5000 --len 0x30000 --entry 0x5000 --out code.asm
+python -m jaguarkit.risc $K/track02_boot.bin --off 0x36f30 --header
 ```
 
 ## Credits for the original

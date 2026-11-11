@@ -1,7 +1,7 @@
 /* io - whole-file reads and big-endian accessors.
  *
  * Everything on the disc is big-endian: the tracks come off a 68000/GPU
- * machine and jcdinfo has already undone the 32-bit word swap the .jcd
+ * machine and jaguarkit.disc has already undone the 32-bit word swap the .jcd
  * container applies, so what is left is plain Motorola order.
  */
 #ifndef HL_IO_H

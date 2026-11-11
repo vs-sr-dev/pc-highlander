@@ -30,6 +30,10 @@ text      the localised item strings, English / French / German
 Nothing here is copied from the original material: it is offsets, counts, names
 and structure. The extracted bytes stay in `assets/`.
 
+TRACKDIR is the disc as jaguarkit extracts it
+(`python -m jaguarkit.disc IMAGE --extract assets/kit_tracks`); every track
+but the films is read from tools/track.py's ORIGIN.
+
 Usage
     python tools/manifest.py TRACKDIR --out assets/manifest.json
     python tools/manifest.py TRACKDIR --out assets/manifest.json \\
@@ -44,27 +48,29 @@ import struct
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-for sub in ("set", "script", "world", "model", "anim", "cinepak", "wave",
-            "text"):
+for sub in ("set", "script", "world", "model", "anim", "wave", "text"):
     sys.path.insert(0, os.path.join(HERE, sub))
+sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.dirname(HERE))
 
 import setx                                                  # noqa: E402
 import scriptx                                               # noqa: E402
 import worldx                                                # noqa: E402
 import modelx                                                # noqa: E402
 import animx                                                 # noqa: E402
-import filmls                                                # noqa: E402
-import filmwav                                               # noqa: E402
 import wavex                                                 # noqa: E402
+import track                                                 # noqa: E402
+from jaguarkit import film                                   # noqa: E402
 
-TRACKS = {2: "track02_00004000.bin", 3: "track03_data.bin",
-          4: "track04_pict.bin", 5: "track05_data.bin", 6: "track06_data.bin",
-          7: "track07_1111.bin", 8: "track08_data.bin"}
+TRACKS = {2: "track02_boot.bin", 3: "track03_DATA.bin",
+          4: "track04_PICT.bin", 5: "track05_DATA.bin", 6: "track06_DATA.bin",
+          7: "track07_1111.bin", 8: "track08_DATA.bin"}
+FILM_RATE = 22252           # the films' speech, in Hz (docs/09-text-and-fmv.md)
 SCENE_STRIDE = 110
 
 
 def find(d, n):
-    """The extracted track n, whatever suffix jcdinfo gave it."""
+    """The extracted track n, whatever its tag made its name."""
     want = TRACKS.get(n, "track%02d" % n)
     p = os.path.join(d, want)
     if os.path.exists(p):
@@ -76,8 +82,11 @@ def find(d, n):
 
 
 def read(d, n):
+    """Track n from ORIGIN; the film track whole, since films go by block."""
     p = find(d, n)
-    return open(p, "rb").read() if p else None
+    if not p:
+        return None
+    return open(p, "rb").read() if n == 7 else track.read(p)
 
 
 def build(dirname, world_s=None):
@@ -102,16 +111,14 @@ def build(dirname, world_s=None):
     man["scenes"] = [scenes[k] for k in sorted(scenes)]
 
     # ---- films, so scripts can name them --------------------------------
-    film_off = filmls.films(t7)
     films = []
-    for i, o in enumerate(film_off):
-        info = filmls.describe(t7, o)
-        pcm, ticks, _ = filmwav.film_audio(t7, o)
-        films.append(dict(film=i, block=info["block"], bytes=info["bytes"],
-                          chunks=info["chunks"], width=info["width"],
-                          height=info["height"],
+    for i, f in enumerate(film.scan(t7)):
+        pcm = f.audio()
+        films.append(dict(film=i, block=f.block, bytes=f.bytes,
+                          chunks=len(f.chunks), width=f.width,
+                          height=f.height,
                           audio_bytes=len(pcm),
-                          audio_seconds=round(len(pcm) / float(filmwav.RATE), 2),
+                          audio_seconds=round(len(pcm) / float(FILM_RATE), 2),
                           triggers=[]))
     by_block = {f["block"]: f["film"] for f in films}
 
